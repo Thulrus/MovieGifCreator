@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Setup: venv + install deps",
+      "type": "shell",
+      "command": "python3 -m venv venv && venv/bin/pip install --upgrade pip && venv/bin/pip install -r requirements.txt",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run: Start App",
+      "type": "shell",
+      "command": "venv/bin/python app.py",
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^$",
+          "file": 1,
+          "location": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*Restarting with.*",
+          "endsPattern": "Running on http"
+        }
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Clean: clear session data",
+      "type": "shell",
+      "command": "rm -rf sessions && mkdir -p sessions",
+      "problemMatcher": []
+    }
+  ]
+}

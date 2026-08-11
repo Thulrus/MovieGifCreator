@@ -1,0 +1,258 @@
+"""
+Movie Quote GIF Maker — local web app.
+
+Run it:
+    pip install -r requirements.txt
+    python app.py
+    -> open http://127.0.0.1:5050 in your browser
+
+Everything runs locally. Nothing leaves your machine.
+
+Workflow:
+    1. Upload a video (your screen-recording / DVD rip / whatever).
+    2. Scrub the player, click "Mark Start" / "Mark End" to pick the clip.
+    3. Click "Auto-Caption" — Whisper transcribes the clip with timestamps.
+    4. Edit any misheard words in the caption boxes.
+    5. Click "Make GIF" — get a GIF and an MP4, both captioned.
+"""
+
+import shutil
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+from flask import Flask, jsonify, render_template, request, send_from_directory
+
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "sessions"
+DATA_DIR.mkdir(exist_ok=True)
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024 * 1024  # 4GB, movies are big
+
+# Whisper model is loaded lazily (and only once) since it's slow to load.
+_whisper_model = None
+
+
+def get_whisper_model():
+    global _whisper_model
+    if _whisper_model is None:
+        import whisper
+
+        _whisper_model = whisper.load_model("small")
+    return _whisper_model
+
+
+def session_dir(sid: str) -> Path:
+    d = DATA_DIR / sid
+    d.mkdir(exist_ok=True, parents=True)
+    return d
+
+
+def run(cmd):
+    """Run a subprocess, raise with stderr visible if it fails."""
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Command failed: {' '.join(cmd)}\n{result.stderr}")
+    return result
+
+
+def fmt_ass_time(t: float) -> str:
+    h = int(t // 3600)
+    m = int((t % 3600) // 60)
+    s = t % 60
+    return f"{h:d}:{m:02d}:{s:05.2f}"
+
+
+def ass_color(hex_color: str) -> str:
+    """Convert a '#rrggbb' hex color to ASS's &HAABBGGRR format (opaque)."""
+    h = hex_color.lstrip("#")
+    r, g, b = h[0:2], h[2:4], h[4:6]
+    return f"&H00{b}{g}{r}".upper()
+
+
+def write_ass(path: Path, captions: list, fontsize: int, color: str = "#ffffff"):
+    primary_colour = ass_color(color)
+    header = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: 480
+PlayResY: 270
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,DejaVu Sans,{fontsize},{primary_colour},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,1,2,20,20,20,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    lines = [header]
+    for c in captions:
+        text = str(c["text"]).replace("\n", "\\N")
+        lines.append(
+            f"Dialogue: 0,{fmt_ass_time(float(c['start']))},"
+            f"{fmt_ass_time(float(c['end']))},Default,,0,0,0,,{text}\n"
+        )
+    path.write_text("".join(lines))
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+def normalize_preview(src_path: Path, d: Path) -> Path:
+    """Transcode whatever we got into a browser-friendly mp4 preview."""
+    preview = d / "source.mp4"
+    run(["ffmpeg", "-y", "-i", str(src_path), "-c:v", "libx264",
+         "-c:a", "aac", "-movflags", "+faststart", str(preview)])
+    return preview
+
+
+@app.route("/api/upload", methods=["POST"])
+def upload():
+    f = request.files.get("video")
+    if not f:
+        return jsonify(error="No file uploaded"), 400
+
+    sid = uuid.uuid4().hex[:12]
+    d = session_dir(sid)
+    src_path = d / "source" / f.filename
+    src_path.parent.mkdir(exist_ok=True)
+    f.save(src_path)
+
+    # Normalize to mp4 so the browser can always preview it, regardless of
+    # source container/codec (DVD rips especially can be finicky).
+    normalize_preview(src_path, d)
+
+    return jsonify(
+        session=sid,
+        video_url=f"/sessions/{sid}/source.mp4",
+        download_url=f"/sessions/{sid}/source/{src_path.name}",
+    )
+
+
+@app.route("/api/fetch-youtube", methods=["POST"])
+def fetch_youtube():
+    data = request.get_json()
+    url = (data.get("url") or "").strip()
+    if not url:
+        return jsonify(error="No URL given"), 400
+
+    sid = uuid.uuid4().hex[:12]
+    d = session_dir(sid)
+    src_dir = d / "source"
+    src_dir.mkdir(exist_ok=True)
+
+    # Invoked as a module of the current interpreter (not the bare "yt-dlp"
+    # command) so it always resolves to the venv's copy, even when the venv
+    # isn't activated — YouTube breaks old yt-dlp releases often enough that
+    # this matters.
+    result = subprocess.run(
+        [sys.executable, "-m", "yt_dlp", "--no-playlist",
+         "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+         "-o", str(src_dir / "download.%(ext)s"), url],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return jsonify(error="Couldn't download that video: " + result.stderr.strip().splitlines()[-1]), 400
+
+    downloaded = next(src_dir.iterdir(), None)
+    if not downloaded:
+        return jsonify(error="Download finished but no file was found"), 400
+
+    normalize_preview(downloaded, d)
+
+    return jsonify(
+        session=sid,
+        video_url=f"/sessions/{sid}/source.mp4",
+        download_url=f"/sessions/{sid}/source/{downloaded.name}",
+    )
+
+
+@app.route("/api/cut", methods=["POST"])
+def cut():
+    data = request.get_json()
+    sid = data["session"]
+    start, end = float(data["start"]), float(data["end"])
+    if end <= start:
+        return jsonify(error="End must be after start"), 400
+
+    d = session_dir(sid)
+    src = d / "source.mp4"
+    clip = d / "clip.mp4"
+    run(["ffmpeg", "-y", "-i", str(src), "-ss", str(start), "-to", str(end),
+         "-c:v", "libx264", "-c:a", "aac", "-avoid_negative_ts", "make_zero",
+         str(clip)])
+
+    return jsonify(clip_url=f"/sessions/{sid}/clip.mp4")
+
+
+@app.route("/api/transcribe", methods=["POST"])
+def transcribe():
+    data = request.get_json()
+    sid = data["session"]
+    d = session_dir(sid)
+    clip = d / "clip.mp4"
+    audio = d / "clip.wav"
+
+    run(["ffmpeg", "-y", "-i", str(clip), "-ar", "16000", "-ac", "1", str(audio)])
+
+    model = get_whisper_model()
+    result = model.transcribe(str(audio), fp16=False)
+    segments = [
+        {"start": round(seg["start"], 2), "end": round(seg["end"], 2),
+         "text": seg["text"].strip()}
+        for seg in result["segments"]
+    ]
+    # Whisper occasionally returns nothing for very short/quiet clips.
+    if not segments:
+        segments = [{"start": 0, "end": 3, "text": "(couldn't hear speech — type the quote here)"}]
+
+    return jsonify(segments=segments)
+
+
+@app.route("/api/export", methods=["POST"])
+def export():
+    data = request.get_json()
+    sid = data["session"]
+    captions = data["captions"]
+    fontsize = int(data.get("fontsize", 20))
+    color = data.get("color", "#ffffff")
+    name = "".join(c for c in data.get("name", "clip") if c.isalnum() or c in "-_") or "clip"
+
+    d = session_dir(sid)
+    clip = d / "clip.mp4"
+    ass = d / "captions.ass"
+    write_ass(ass, captions, fontsize, color)
+
+    burned = d / "burned.mp4"
+    run(["ffmpeg", "-y", "-i", str(clip), "-vf", f"ass={ass}",
+         "-c:a", "copy", str(burned)])
+
+    out_mp4 = d / f"{name}.mp4"
+    shutil.copy(burned, out_mp4)
+
+    palette = d / "palette.png"
+    run(["ffmpeg", "-y", "-i", str(burned),
+         "-vf", "fps=15,scale=480:-1:flags=lanczos,palettegen", str(palette)])
+
+    out_gif = d / f"{name}.gif"
+    run(["ffmpeg", "-y", "-i", str(burned), "-i", str(palette),
+         "-filter_complex",
+         "fps=15,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse",
+         str(out_gif)])
+
+    return jsonify(
+        gif_url=f"/sessions/{sid}/{name}.gif",
+        mp4_url=f"/sessions/{sid}/{name}.mp4",
+    )
+
+
+@app.route("/sessions/<sid>/<path:filename>")
+def serve_session_file(sid, filename):
+    return send_from_directory(DATA_DIR / sid, filename)
+
+
+if __name__ == "__main__":
+    app.run(debug=True, host="127.0.0.1", port=5050)

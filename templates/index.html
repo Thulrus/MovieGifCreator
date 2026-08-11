@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Movie Quote GIF Maker</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1e2127;
+    --accent: #5b8cff;
+    --accent-hover: #7aa2ff;
+    --text: #e8e9ec;
+    --muted: #9aa0ab;
+    --border: #2c3038;
+    --good: #4ade80;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px 20px 80px;
+    line-height: 1.5;
+  }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); margin-top: 0; margin-bottom: 28px; }
+  .step {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 18px;
+    opacity: 0.4;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .step.active { opacity: 1; pointer-events: auto; }
+  .step.done { opacity: 0.75; pointer-events: auto; }
+  .step h2 {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin: 0 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .step h2 .num {
+    background: var(--accent);
+    color: white;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: bold;
+  }
+  video { width: 100%; border-radius: 10px; background: black; display: block; }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 4px 6px 4px 0;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { background: #3a3d45; color: var(--muted); cursor: not-allowed; }
+  button.secondary { background: #2c3038; }
+  button.secondary:hover { background: #3a3d45; }
+  input[type=file] {
+    width: 100%;
+    padding: 30px 12px;
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    background: #16181d;
+    color: var(--muted);
+  }
+  .marks { display: flex; gap: 20px; margin: 14px 0; font-size: 15px; }
+  .marks .val { color: var(--good); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .timeline {
+    position: relative;
+    height: 44px;
+    margin: 18px 2px 10px;
+    touch-action: none;
+  }
+  .timeline-track {
+    position: absolute;
+    top: 50%; left: 0; right: 0;
+    height: 6px;
+    transform: translateY(-50%);
+    background: #16181d;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .timeline-range {
+    position: absolute;
+    top: 50%;
+    height: 6px;
+    transform: translateY(-50%);
+    background: var(--accent);
+    border-radius: 4px;
+  }
+  .timeline-handle {
+    position: absolute;
+    top: 50%;
+    width: 16px; height: 28px;
+    transform: translate(-50%, -50%);
+    background: #e8e9ec;
+    border: 2px solid var(--accent);
+    border-radius: 5px;
+    cursor: ew-resize;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .timeline-handle:active { background: var(--accent-hover); }
+  .timeline-playhead {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: var(--good);
+    pointer-events: none;
+  }
+  .mark-field { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .mark-field .mark-label { color: var(--muted); font-size: 13px; width: 40px; }
+  .mark-field .val { color: var(--good); font-weight: 600; font-variant-numeric: tabular-nums; width: 68px; }
+  .nudge { background: #2c3038; padding: 6px 10px; font-size: 12px; margin: 0; border-radius: 6px; }
+  .nudge:hover { background: #3a3d45; }
+  .caption-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+    background: #16181d;
+    padding: 10px 12px;
+    border-radius: 8px;
+  }
+  .caption-row .time { color: var(--muted); font-size: 12px; width: 100px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .caption-row input[type=text] {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-size: 15px;
+    padding: 6px 4px;
+    border-bottom: 1px solid transparent;
+  }
+  .caption-row input[type=text]:focus { outline: none; border-bottom: 1px solid var(--accent); }
+  .slider-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .slider-row label { color: var(--muted); font-size: 14px; width: 90px; flex-shrink: 0; }
+  input[type=range] { flex: 1; }
+  .slider-val { color: var(--text); font-size: 14px; width: 26px; text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=color] {
+    width: 60px;
+    height: 36px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #16181d;
+    cursor: pointer;
+  }
+  .result img, .result video { width: 100%; border-radius: 10px; margin-bottom: 12px; }
+  .download-links { display: flex; gap: 10px; }
+  .download-links a {
+    flex: 1;
+    text-align: center;
+    background: var(--good);
+    color: #0a1f14;
+    padding: 12px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .status { color: var(--muted); font-size: 14px; margin-top: 10px; }
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--muted);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .name-input {
+    width: 100%;
+    background: #16181d;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-size: 15px;
+    margin-bottom: 14px;
+  }
+  #downloadSourceBtn {
+    display: inline-block;
+    background: #2c3038;
+    color: var(--text);
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    margin: 10px 0 0;
+  }
+  #downloadSourceBtn:hover { background: #3a3d45; }
+  .source-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .source-tabs .tab {
+    background: #16181d;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    margin: 0;
+  }
+  .source-tabs .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .youtube-row { display: flex; gap: 10px; }
+  .youtube-row input[type=text] {
+    flex: 1;
+    background: #16181d;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-size: 15px;
+  }
+</style>
+</head>
+<body>
+
+<h1>🎬 Movie Quote GIF Maker</h1>
+<p class="subtitle">Upload a clip, mark the part you want, and get a captioned GIF ready to text.</p>
+
+<div class="step active" id="step1">
+  <h2><span class="num">1</span> Get your video</h2>
+  <div class="source-tabs">
+    <button type="button" class="tab active" id="tabYoutube">YouTube link</button>
+    <button type="button" class="tab" id="tabUpload">Upload a file</button>
+  </div>
+  <div id="youtubeSource">
+    <div class="youtube-row">
+      <input type="text" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=…">
+      <button id="fetchYoutubeBtn">⬇ Fetch</button>
+    </div>
+  </div>
+  <div id="uploadSource" style="display:none;">
+    <input type="file" id="fileInput" accept="video/*">
+  </div>
+  <p class="status" id="uploadStatus"></p>
+  <a id="downloadSourceBtn" download style="display:none;">⬇ Download Video File</a>
+</div>
+
+<div class="step" id="step2">
+  <h2><span class="num">2</span> Pick the part you want</h2>
+  <video id="player" controls></video>
+
+  <div class="timeline" id="timeline">
+    <div class="timeline-track"></div>
+    <div class="timeline-range" id="timelineRange"></div>
+    <div class="timeline-handle" id="startHandle"></div>
+    <div class="timeline-handle" id="endHandle"></div>
+    <div class="timeline-playhead" id="playhead"></div>
+  </div>
+
+  <div class="mark-field">
+    <span class="mark-label">Start</span>
+    <button class="nudge" data-target="start" data-delta="-1">−1s</button>
+    <button class="nudge" data-target="start" data-delta="-0.1">−0.1s</button>
+    <span class="val" id="startVal">0.00s</span>
+    <button class="nudge" data-target="start" data-delta="0.1">+0.1s</button>
+    <button class="nudge" data-target="start" data-delta="1">+1s</button>
+  </div>
+  <div class="mark-field">
+    <span class="mark-label">End</span>
+    <button class="nudge" data-target="end" data-delta="-1">−1s</button>
+    <button class="nudge" data-target="end" data-delta="-0.1">−0.1s</button>
+    <span class="val" id="endVal">0.00s</span>
+    <button class="nudge" data-target="end" data-delta="0.1">+0.1s</button>
+    <button class="nudge" data-target="end" data-delta="1">+1s</button>
+  </div>
+
+  <button id="markStartBtn">⏱ Mark Start (at playhead)</button>
+  <button id="markEndBtn">⏱ Mark End (at playhead)</button>
+  <button id="previewSelBtn" class="secondary" disabled>▶ Preview Selection</button>
+  <button id="cutBtn" class="secondary" disabled>✂️ Cut Clip</button>
+  <p class="status" id="cutStatus"></p>
+</div>
+
+<div class="step" id="step3">
+  <h2><span class="num">3</span> Preview & auto-caption</h2>
+  <video id="clipPlayer" controls></video>
+  <button id="transcribeBtn">📝 Auto-Caption This Clip</button>
+  <p class="status" id="transcribeStatus"></p>
+</div>
+
+<div class="step" id="step4">
+  <h2><span class="num">4</span> Check the captions</h2>
+  <p class="status">Fix anything Whisper misheard. Timing is already set for you.</p>
+  <div id="captionList"></div>
+</div>
+
+<div class="step" id="step5">
+  <h2><span class="num">5</span> Make it</h2>
+  <input type="text" class="name-input" id="clipName" placeholder="Name this GIF (e.g. youre-tearing-me-apart-lisa)">
+  <div class="slider-row">
+    <label>Caption size</label>
+    <input type="range" id="fontSize" min="14" max="32" value="20">
+    <span class="slider-val" id="fontSizeVal">20</span>
+  </div>
+  <div class="slider-row">
+    <label>Caption color</label>
+    <input type="color" id="captionColor" value="#ffffff">
+  </div>
+  <button id="makeBtn">🎉 Make GIF</button>
+  <p class="status" id="makeStatus"></p>
+</div>
+
+<div class="step" id="step6">
+  <h2><span class="num">✓</span> Done</h2>
+  <div class="result">
+    <img id="resultGif" alt="Your captioned GIF">
+    <div class="download-links">
+      <a id="downloadGif" download>⬇ Download GIF</a>
+      <a id="downloadMp4" download>⬇ Download MP4 (send this if you can)</a>
+    </div>
+  </div>
+  <button class="secondary" id="startOverBtn" style="margin-top:14px;">↺ Make Another</button>
+</div>
+
+<script>
+let sessionId = null;
+let startTime = null, endTime = null;
+
+const $ = id => document.getElementById(id);
+function activate(id) { $(id).classList.add('active'); }
+function done(id) { $(id).classList.remove('active'); $(id).classList.add('done'); }
+function fmt(t) { return t.toFixed(2) + 's'; }
+
+// --- Step 1: Get video (YouTube or upload) ---
+$('tabYoutube').addEventListener('click', () => switchSourceTab('youtube'));
+$('tabUpload').addEventListener('click', () => switchSourceTab('upload'));
+function switchSourceTab(which) {
+  $('tabYoutube').classList.toggle('active', which === 'youtube');
+  $('tabUpload').classList.toggle('active', which === 'upload');
+  $('youtubeSource').style.display = which === 'youtube' ? '' : 'none';
+  $('uploadSource').style.display = which === 'upload' ? '' : 'none';
+  $('uploadStatus').textContent = '';
+}
+
+function gotVideo(data) {
+  sessionId = data.session;
+  $('player').src = data.video_url;
+  $('uploadStatus').textContent = '✓ Ready';
+  $('downloadSourceBtn').href = data.download_url;
+  $('downloadSourceBtn').style.display = 'inline-block';
+  done('step1');
+  activate('step2');
+}
+
+$('fetchYoutubeBtn').addEventListener('click', async () => {
+  const url = $('youtubeUrl').value.trim();
+  if (!url) return;
+  $('uploadStatus').innerHTML = '<span class="spinner"></span>Downloading from YouTube…';
+
+  const res = await fetch('/api/fetch-youtube', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url })
+  });
+  const data = await res.json();
+  if (data.error) { $('uploadStatus').textContent = 'Error: ' + data.error; return; }
+  gotVideo(data);
+});
+
+$('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  $('uploadStatus').innerHTML = '<span class="spinner"></span>Uploading & preparing preview…';
+
+  const form = new FormData();
+  form.append('video', file);
+  const res = await fetch('/api/upload', { method: 'POST', body: form });
+  const data = await res.json();
+  if (data.error) { $('uploadStatus').textContent = 'Error: ' + data.error; return; }
+  gotVideo(data);
+});
+
+// --- Step 2: Mark & cut ---
+let duration = 0;
+let previewLooping = false;
+const MIN_GAP = 0.05;
+
+$('player').addEventListener('loadedmetadata', () => {
+  duration = $('player').duration;
+  startTime = 0;
+  endTime = duration;
+  updateTimelineUI();
+});
+$('player').addEventListener('timeupdate', () => {
+  $('playhead').style.left = timeToPct($('player').currentTime) + '%';
+  if (previewLooping && $('player').currentTime >= endTime) {
+    $('player').currentTime = startTime;
+  }
+});
+$('player').addEventListener('pause', () => {
+  if (previewLooping) { previewLooping = false; $('previewSelBtn').textContent = '▶ Preview Selection'; }
+});
+
+function timeToPct(t) { return duration ? (t / duration) * 100 : 0; }
+function pctToTime(pct) { return Math.min(duration, Math.max(0, (pct / 100) * duration)); }
+
+function updateTimelineUI() {
+  const s = timeToPct(startTime), e = timeToPct(endTime);
+  $('timelineRange').style.left = s + '%';
+  $('timelineRange').style.width = Math.max(0, e - s) + '%';
+  $('startHandle').style.left = s + '%';
+  $('endHandle').style.left = e + '%';
+  $('startVal').textContent = fmt(startTime);
+  $('endVal').textContent = fmt(endTime);
+  checkMarks();
+}
+
+function dragHandle(el, which) {
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    previewLooping = false;
+    $('previewSelBtn').textContent = '▶ Preview Selection';
+    $('player').pause();
+    const move = (ev) => {
+      const rect = $('timeline').getBoundingClientRect();
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
+      let t = pctToTime(pct);
+      if (which === 'start') startTime = Math.min(Math.max(0, t), endTime - MIN_GAP);
+      else endTime = Math.max(Math.min(duration, t), startTime + MIN_GAP);
+      $('player').currentTime = which === 'start' ? startTime : endTime;
+      updateTimelineUI();
+    };
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  });
+}
+dragHandle($('startHandle'), 'start');
+dragHandle($('endHandle'), 'end');
+
+// Clicking elsewhere on the timeline seeks the video, like a normal scrubber.
+$('timeline').addEventListener('pointerdown', (e) => {
+  if (e.target.classList.contains('timeline-handle')) return;
+  const rect = $('timeline').getBoundingClientRect();
+  const pct = ((e.clientX - rect.left) / rect.width) * 100;
+  $('player').currentTime = pctToTime(pct);
+});
+
+document.querySelectorAll('.nudge').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const delta = parseFloat(btn.dataset.delta);
+    const target = btn.dataset.target;
+    if (target === 'start') startTime = Math.min(Math.max(0, startTime + delta), endTime - MIN_GAP);
+    else endTime = Math.max(Math.min(duration, endTime + delta), startTime + MIN_GAP);
+    $('player').pause();
+    $('player').currentTime = target === 'start' ? startTime : endTime;
+    updateTimelineUI();
+  });
+});
+
+$('markStartBtn').addEventListener('click', () => {
+  startTime = Math.min($('player').currentTime, endTime - MIN_GAP);
+  updateTimelineUI();
+});
+$('markEndBtn').addEventListener('click', () => {
+  endTime = Math.max($('player').currentTime, startTime + MIN_GAP);
+  updateTimelineUI();
+});
+
+function checkMarks() {
+  const valid = startTime !== null && endTime !== null && endTime > startTime;
+  $('cutBtn').disabled = !valid;
+  $('previewSelBtn').disabled = !valid;
+}
+
+$('previewSelBtn').addEventListener('click', () => {
+  previewLooping = !previewLooping;
+  if (previewLooping) {
+    $('player').currentTime = startTime;
+    $('player').play();
+    $('previewSelBtn').textContent = '⏸ Stop Preview';
+  } else {
+    $('player').pause();
+    $('previewSelBtn').textContent = '▶ Preview Selection';
+  }
+});
+
+$('cutBtn').addEventListener('click', async () => {
+  previewLooping = false;
+  $('previewSelBtn').textContent = '▶ Preview Selection';
+  $('cutStatus').innerHTML = '<span class="spinner"></span>Cutting clip…';
+  const res = await fetch('/api/cut', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session: sessionId, start: startTime, end: endTime })
+  });
+  const data = await res.json();
+  if (data.error) { $('cutStatus').textContent = 'Error: ' + data.error; return; }
+
+  $('clipPlayer').src = data.clip_url;
+  $('cutStatus').textContent = '✓ Clip ready';
+  done('step2');
+  activate('step3');
+});
+
+// --- Step 3: Transcribe ---
+$('transcribeBtn').addEventListener('click', async () => {
+  $('transcribeStatus').innerHTML = '<span class="spinner"></span>Listening to the clip… (first run downloads the speech model, be patient)';
+  const res = await fetch('/api/transcribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session: sessionId })
+  });
+  const data = await res.json();
+  if (data.error) { $('transcribeStatus').textContent = 'Error: ' + data.error; return; }
+
+  $('transcribeStatus').textContent = '✓ Transcribed';
+  renderCaptions(data.segments);
+  done('step3');
+  activate('step4');
+  activate('step5');
+});
+
+// --- Step 4: Edit captions ---
+function renderCaptions(segments) {
+  const list = $('captionList');
+  list.innerHTML = '';
+  segments.forEach((seg, i) => {
+    const row = document.createElement('div');
+    row.className = 'caption-row';
+    row.innerHTML = `
+      <div class="time">${seg.start.toFixed(1)}–${seg.end.toFixed(1)}s</div>
+      <input type="text" value="${seg.text.replace(/"/g, '&quot;')}" data-start="${seg.start}" data-end="${seg.end}">
+    `;
+    list.appendChild(row);
+  });
+}
+
+// --- Step 5: Export ---
+$('fontSize').addEventListener('input', () => { $('fontSizeVal').textContent = $('fontSize').value; });
+
+$('makeBtn').addEventListener('click', async () => {
+  const inputs = document.querySelectorAll('#captionList input[type=text]');
+  const captions = Array.from(inputs).map(inp => ({
+    start: inp.dataset.start,
+    end: inp.dataset.end,
+    text: inp.value
+  }));
+  const name = $('clipName').value.trim() || 'movie-quote';
+  const fontsize = $('fontSize').value;
+  const color = $('captionColor').value;
+
+  $('makeStatus').innerHTML = '<span class="spinner"></span>Burning captions & rendering GIF…';
+  const res = await fetch('/api/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session: sessionId, captions, name, fontsize, color })
+  });
+  const data = await res.json();
+  if (data.error) { $('makeStatus').textContent = 'Error: ' + data.error; return; }
+
+  // Cache-bust: the filename doesn't change between exports of the same
+  // named clip, so without this the browser just shows the old image.
+  const bust = '?t=' + Date.now();
+
+  $('makeStatus').textContent = '✓ Done!';
+  $('resultGif').src = data.gif_url + bust;
+  $('downloadGif').href = data.gif_url + bust;
+  $('downloadMp4').href = data.mp4_url + bust;
+  done('step5');
+  activate('step6');
+  $('step6').scrollIntoView({ behavior: 'smooth' });
+});
+
+$('startOverBtn').addEventListener('click', () => location.reload());
+</script>
+
+</body>
+</html>
