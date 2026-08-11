@@ -33,7 +33,9 @@ Then open **http://127.0.0.1:5050** in a browser.
 1. **Get your video** — paste a YouTube URL and click Fetch, or switch to
    the Upload tab for a local file (a screen-recording, a DVD rip,
    whatever you've got). It can be a whole video, not just a pre-trimmed
-   clip — you mark the part you want next.
+   clip — you mark the part you want next. Already grabbed this video
+   before? Click its thumbnail in the "Already downloaded" grid instead
+   of re-downloading it.
 2. **Pick the part you want** — drag the two handles on the timeline (or
    nudge them with the ±0.1s/±1s buttons, or click "Mark Start"/"Mark End"
    at the current playhead position) to set the range precisely. Click

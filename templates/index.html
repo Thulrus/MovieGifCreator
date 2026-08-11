@@ -142,7 +142,6 @@
     padding: 10px 12px;
     border-radius: 8px;
   }
-  .caption-row .time { color: var(--muted); font-size: 12px; width: 100px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
   .caption-row input[type=text] {
     flex: 1;
     background: transparent;
@@ -153,6 +152,33 @@
     border-bottom: 1px solid transparent;
   }
   .caption-row input[type=text]:focus { outline: none; border-bottom: 1px solid var(--accent); }
+  .caption-row input.cap-time {
+    width: 56px;
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    padding: 6px 2px;
+    text-align: right;
+  }
+  .caption-row input.cap-time:focus { outline: none; border-bottom: 1px solid var(--accent); color: var(--text); }
+  .caption-row .time-sep { color: var(--muted); font-size: 12px; flex-shrink: 0; }
+  .caption-row .cap-del {
+    flex-shrink: 0;
+    background: transparent;
+    color: var(--muted);
+    border: none;
+    margin: 0;
+    padding: 4px 6px;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .caption-row .cap-del:hover { color: var(--text); background: #2c3038; border-radius: 6px; }
+  #addCaptionBtn { margin-top: 4px; }
   .slider-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
   .slider-row label { color: var(--muted); font-size: 14px; width: 90px; flex-shrink: 0; }
   input[type=range] { flex: 1; }
@@ -164,6 +190,15 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     background: #16181d;
+    cursor: pointer;
+  }
+  #outputWidth {
+    background: #16181d;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
     cursor: pointer;
   }
   .result img, .result video { width: 100%; border-radius: 10px; margin-bottom: 12px; }
@@ -212,6 +247,44 @@
     margin: 10px 0 0;
   }
   #downloadSourceBtn:hover { background: #3a3d45; }
+  .library { margin-bottom: 22px; }
+  .library-label { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+  .library-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 12px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+  .library-card {
+    background: #16181d;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  .library-card:hover, .library-card:focus { border-color: var(--accent); outline: none; }
+  .library-card img, .library-card .lib-thumb-placeholder {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    font-size: 24px;
+  }
+  .library-card .lib-title {
+    font-size: 12px;
+    padding: 8px 10px;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
   .source-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
   .source-tabs .tab {
     background: #16181d;
@@ -239,6 +312,12 @@
 
 <div class="step active" id="step1">
   <h2><span class="num">1</span> Get your video</h2>
+
+  <div class="library" id="library" style="display:none;">
+    <p class="library-label">Already downloaded — click to reuse:</p>
+    <div class="library-grid" id="libraryGrid"></div>
+  </div>
+
   <div class="source-tabs">
     <button type="button" class="tab active" id="tabYoutube">YouTube link</button>
     <button type="button" class="tab" id="tabUpload">Upload a file</button>
@@ -301,8 +380,9 @@
 
 <div class="step" id="step4">
   <h2><span class="num">4</span> Check the captions</h2>
-  <p class="status">Fix anything Whisper misheard. Timing is already set for you.</p>
+  <p class="status">Fix anything Whisper misheard, drag the timing numbers if a caption is early/late, or add one Whisper missed.</p>
   <div id="captionList"></div>
+  <button type="button" class="secondary" id="addCaptionBtn">+ Add Caption</button>
 </div>
 
 <div class="step" id="step5">
@@ -310,12 +390,20 @@
   <input type="text" class="name-input" id="clipName" placeholder="Name this GIF (e.g. youre-tearing-me-apart-lisa)">
   <div class="slider-row">
     <label>Caption size</label>
-    <input type="range" id="fontSize" min="14" max="32" value="20">
-    <span class="slider-val" id="fontSizeVal">20</span>
+    <input type="range" id="fontSize" min="14" max="64" value="32">
+    <span class="slider-val" id="fontSizeVal">32</span>
   </div>
   <div class="slider-row">
     <label>Caption color</label>
     <input type="color" id="captionColor" value="#ffffff">
+  </div>
+  <div class="slider-row">
+    <label>Output size</label>
+    <select id="outputWidth">
+      <option value="480">480px (best quality)</option>
+      <option value="360" selected>360px (balanced)</option>
+      <option value="240">240px (smallest file)</option>
+    </select>
   </div>
   <button id="makeBtn">🎉 Make GIF</button>
   <p class="status" id="makeStatus"></p>
@@ -342,6 +430,26 @@ function activate(id) { $(id).classList.add('active'); }
 function done(id) { $(id).classList.remove('active'); $(id).classList.add('done'); }
 function fmt(t) { return t.toFixed(2) + 's'; }
 
+// Wraps fetch so a dropped connection (e.g. the dev server restarting
+// mid-request) shows up as a clear error instead of leaving the UI stuck
+// on a spinner forever with no way to tell what happened.
+async function safeFetch(url, opts) {
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (err) {
+    return { error: 'Lost connection to the server. Is it still running? Try again.' };
+  }
+  let data;
+  try {
+    data = await res.json();
+  } catch (err) {
+    return { error: `Server error (${res.status})` };
+  }
+  if (!res.ok && !data.error) data.error = `Server error (${res.status})`;
+  return data;
+}
+
 // --- Step 1: Get video (YouTube or upload) ---
 $('tabYoutube').addEventListener('click', () => switchSourceTab('youtube'));
 $('tabUpload').addEventListener('click', () => switchSourceTab('upload'));
@@ -357,23 +465,67 @@ function gotVideo(data) {
   sessionId = data.session;
   $('player').src = data.video_url;
   $('uploadStatus').textContent = '✓ Ready';
-  $('downloadSourceBtn').href = data.download_url;
-  $('downloadSourceBtn').style.display = 'inline-block';
+  if (data.download_url) {
+    $('downloadSourceBtn').href = data.download_url;
+    $('downloadSourceBtn').style.display = 'inline-block';
+  } else {
+    $('downloadSourceBtn').style.display = 'none';
+  }
   done('step1');
   activate('step2');
 }
 
+// --- Library of previously downloaded videos ---
+async function loadLibrary() {
+  const data = await safeFetch('/api/library');
+  if (data.error || !data.sessions || data.sessions.length === 0) {
+    $('library').style.display = 'none';
+    return;
+  }
+  const grid = $('libraryGrid');
+  grid.innerHTML = '';
+  data.sessions.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'library-card';
+    card.tabIndex = 0;
+
+    if (s.thumb_url) {
+      const img = document.createElement('img');
+      img.src = s.thumb_url;
+      img.alt = '';
+      card.appendChild(img);
+    } else {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'lib-thumb-placeholder';
+      placeholder.textContent = '🎬';
+      card.appendChild(placeholder);
+    }
+
+    const title = document.createElement('div');
+    title.className = 'lib-title';
+    title.textContent = s.title;
+    card.appendChild(title);
+
+    card.addEventListener('click', () => gotVideo(s));
+    card.addEventListener('keydown', (e) => { if (e.key === 'Enter') gotVideo(s); });
+    grid.appendChild(card);
+  });
+  $('library').style.display = '';
+}
+loadLibrary();
+
 $('fetchYoutubeBtn').addEventListener('click', async () => {
   const url = $('youtubeUrl').value.trim();
   if (!url) return;
-  $('uploadStatus').innerHTML = '<span class="spinner"></span>Downloading from YouTube…';
+  $('fetchYoutubeBtn').disabled = true;
+  $('uploadStatus').innerHTML = '<span class="spinner"></span>Downloading from YouTube… (large videos can take a while)';
 
-  const res = await fetch('/api/fetch-youtube', {
+  const data = await safeFetch('/api/fetch-youtube', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url })
   });
-  const data = await res.json();
+  $('fetchYoutubeBtn').disabled = false;
   if (data.error) { $('uploadStatus').textContent = 'Error: ' + data.error; return; }
   gotVideo(data);
 });
@@ -385,8 +537,7 @@ $('fileInput').addEventListener('change', async (e) => {
 
   const form = new FormData();
   form.append('video', file);
-  const res = await fetch('/api/upload', { method: 'POST', body: form });
-  const data = await res.json();
+  const data = await safeFetch('/api/upload', { method: 'POST', body: form });
   if (data.error) { $('uploadStatus').textContent = 'Error: ' + data.error; return; }
   gotVideo(data);
 });
@@ -473,12 +624,22 @@ document.querySelectorAll('.nudge').forEach(btn => {
   });
 });
 
+const AUTO_PUSH_GAP = 2;
+
 $('markStartBtn').addEventListener('click', () => {
-  startTime = Math.min($('player').currentTime, endTime - MIN_GAP);
+  startTime = $('player').currentTime;
+  if (endTime <= startTime + MIN_GAP) {
+    endTime = Math.min(duration, startTime + AUTO_PUSH_GAP);
+    startTime = Math.min(startTime, endTime - MIN_GAP);
+  }
   updateTimelineUI();
 });
 $('markEndBtn').addEventListener('click', () => {
-  endTime = Math.max($('player').currentTime, startTime + MIN_GAP);
+  endTime = $('player').currentTime;
+  if (startTime >= endTime - MIN_GAP) {
+    startTime = Math.max(0, endTime - AUTO_PUSH_GAP);
+    endTime = Math.max(endTime, startTime + MIN_GAP);
+  }
   updateTimelineUI();
 });
 
@@ -503,13 +664,14 @@ $('previewSelBtn').addEventListener('click', () => {
 $('cutBtn').addEventListener('click', async () => {
   previewLooping = false;
   $('previewSelBtn').textContent = '▶ Preview Selection';
+  $('cutBtn').disabled = true;
   $('cutStatus').innerHTML = '<span class="spinner"></span>Cutting clip…';
-  const res = await fetch('/api/cut', {
+  const data = await safeFetch('/api/cut', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session: sessionId, start: startTime, end: endTime })
   });
-  const data = await res.json();
+  $('cutBtn').disabled = false;
   if (data.error) { $('cutStatus').textContent = 'Error: ' + data.error; return; }
 
   $('clipPlayer').src = data.clip_url;
@@ -520,13 +682,14 @@ $('cutBtn').addEventListener('click', async () => {
 
 // --- Step 3: Transcribe ---
 $('transcribeBtn').addEventListener('click', async () => {
+  $('transcribeBtn').disabled = true;
   $('transcribeStatus').innerHTML = '<span class="spinner"></span>Listening to the clip… (first run downloads the speech model, be patient)';
-  const res = await fetch('/api/transcribe', {
+  const data = await safeFetch('/api/transcribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session: sessionId })
   });
-  const data = await res.json();
+  $('transcribeBtn').disabled = false;
   if (data.error) { $('transcribeStatus').textContent = 'Error: ' + data.error; return; }
 
   $('transcribeStatus').textContent = '✓ Transcribed';
@@ -537,41 +700,70 @@ $('transcribeBtn').addEventListener('click', async () => {
 });
 
 // --- Step 4: Edit captions ---
+function createCaptionRow(seg) {
+  const row = document.createElement('div');
+  row.className = 'caption-row';
+  row.innerHTML = `
+    <input type="number" class="cap-time" data-field="start" step="0.1" min="0" value="${Number(seg.start).toFixed(2)}">
+    <span class="time-sep">–</span>
+    <input type="number" class="cap-time" data-field="end" step="0.1" min="0" value="${Number(seg.end).toFixed(2)}">
+    <input type="text" class="cap-text" value="${(seg.text || '').replace(/"/g, '&quot;')}">
+    <button type="button" class="cap-del" title="Delete this caption">✕</button>
+  `;
+  row.querySelector('.cap-del').addEventListener('click', () => row.remove());
+  return row;
+}
+
 function renderCaptions(segments) {
   const list = $('captionList');
   list.innerHTML = '';
-  segments.forEach((seg, i) => {
-    const row = document.createElement('div');
-    row.className = 'caption-row';
-    row.innerHTML = `
-      <div class="time">${seg.start.toFixed(1)}–${seg.end.toFixed(1)}s</div>
-      <input type="text" value="${seg.text.replace(/"/g, '&quot;')}" data-start="${seg.start}" data-end="${seg.end}">
-    `;
-    list.appendChild(row);
-  });
+  segments.forEach(seg => list.appendChild(createCaptionRow(seg)));
 }
+
+$('addCaptionBtn').addEventListener('click', () => {
+  const rows = document.querySelectorAll('#captionList .caption-row');
+  let start = 0;
+  if (rows.length) {
+    const lastEnd = parseFloat(rows[rows.length - 1].querySelector('[data-field="end"]').value) || 0;
+    start = lastEnd + 0.1;
+  } else if ($('clipPlayer').currentTime) {
+    start = $('clipPlayer').currentTime;
+  }
+  let end = start + 2;
+  const clipDur = $('clipPlayer').duration;
+  if (clipDur && !isNaN(clipDur)) end = Math.min(end, clipDur);
+  if (end <= start) end = start + 0.1;
+
+  const row = createCaptionRow({ start, end, text: '' });
+  $('captionList').appendChild(row);
+  row.querySelector('.cap-text').focus();
+});
 
 // --- Step 5: Export ---
 $('fontSize').addEventListener('input', () => { $('fontSizeVal').textContent = $('fontSize').value; });
 
 $('makeBtn').addEventListener('click', async () => {
-  const inputs = document.querySelectorAll('#captionList input[type=text]');
-  const captions = Array.from(inputs).map(inp => ({
-    start: inp.dataset.start,
-    end: inp.dataset.end,
-    text: inp.value
-  }));
+  const rows = document.querySelectorAll('#captionList .caption-row');
+  const captions = Array.from(rows)
+    .map(row => ({
+      start: parseFloat(row.querySelector('[data-field="start"]').value),
+      end: parseFloat(row.querySelector('[data-field="end"]').value),
+      text: row.querySelector('.cap-text').value
+    }))
+    .filter(c => c.text.trim() !== '' && !isNaN(c.start) && !isNaN(c.end) && c.end > c.start);
   const name = $('clipName').value.trim() || 'movie-quote';
   const fontsize = $('fontSize').value;
   const color = $('captionColor').value;
+  const width = $('outputWidth').value;
 
+  $('makeBtn').disabled = true;
   $('makeStatus').innerHTML = '<span class="spinner"></span>Burning captions & rendering GIF…';
-  const res = await fetch('/api/export', {
+  const data = await safeFetch('/api/export', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session: sessionId, captions, name, fontsize, color })
+    body: JSON.stringify({ session: sessionId, captions, name, fontsize, color, width })
   });
-  const data = await res.json();
+  $('makeBtn').disabled = false;
   if (data.error) { $('makeStatus').textContent = 'Error: ' + data.error; return; }
 
   // Cache-bust: the filename doesn't change between exports of the same

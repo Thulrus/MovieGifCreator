@@ -16,9 +16,11 @@ Workflow:
     5. Click "Make GIF" — get a GIF and an MP4, both captioned.
 """
 
+import json
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -101,12 +103,67 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/api/library")
+def library():
+    entries = []
+    for d in DATA_DIR.iterdir():
+        video = d / "source.mp4"
+        if not d.is_dir() or not video.exists():
+            continue
+
+        title = d.name
+        meta_path = d / "meta.json"
+        if meta_path.exists():
+            try:
+                title = json.loads(meta_path.read_text()).get("title", title)
+            except (OSError, ValueError):
+                pass
+
+        src_dir = d / "source"
+        original = next(src_dir.iterdir(), None) if src_dir.exists() else None
+        thumb = d / "thumb.jpg"
+
+        entries.append({
+            "session": d.name,
+            "title": title,
+            "video_url": f"/sessions/{d.name}/source.mp4",
+            "download_url": f"/sessions/{d.name}/source/{original.name}" if original else None,
+            "thumb_url": f"/sessions/{d.name}/thumb.jpg" if thumb.exists() else None,
+            "mtime": video.stat().st_mtime,
+        })
+
+    entries.sort(key=lambda e: e["mtime"], reverse=True)
+    for e in entries:
+        del e["mtime"]
+    return jsonify(sessions=entries)
+
+
 def normalize_preview(src_path: Path, d: Path) -> Path:
     """Transcode whatever we got into a browser-friendly mp4 preview."""
     preview = d / "source.mp4"
     run(["ffmpeg", "-y", "-i", str(src_path), "-c:v", "libx264",
          "-c:a", "aac", "-movflags", "+faststart", str(preview)])
     return preview
+
+
+def make_thumbnail(video_path: Path, d: Path):
+    """Grab a frame for the library grid. Tries 1s in, falls back to the
+    very first frame for clips shorter than that."""
+    thumb = d / "thumb.jpg"
+    for ts in ("00:00:01", "00:00:00"):
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-ss", ts, "-i", str(video_path),
+             "-frames:v", "1", "-vf", "scale=320:-1", str(thumb)],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and thumb.exists():
+            return
+
+
+def write_meta(d: Path, title: str, source_type: str):
+    (d / "meta.json").write_text(json.dumps({
+        "title": title, "source_type": source_type, "created": time.time(),
+    }))
 
 
 @app.route("/api/upload", methods=["POST"])
@@ -121,12 +178,20 @@ def upload():
     src_path.parent.mkdir(exist_ok=True)
     f.save(src_path)
 
+    # Thumbnail + metadata first, from the raw upload — ffmpeg can grab a
+    # frame from almost any container, so this doesn't need to wait on the
+    # (possibly slow, for a big file) transcode below. That way the library
+    # entry is complete even if something interrupts the transcode.
+    make_thumbnail(src_path, d)
+    write_meta(d, Path(f.filename).stem, "upload")
+
     # Normalize to mp4 so the browser can always preview it, regardless of
     # source container/codec (DVD rips especially can be finicky).
     normalize_preview(src_path, d)
 
     return jsonify(
         session=sid,
+        title=Path(f.filename).stem,
         video_url=f"/sessions/{sid}/source.mp4",
         download_url=f"/sessions/{sid}/source/{src_path.name}",
     )
@@ -148,10 +213,29 @@ def fetch_youtube():
     # command) so it always resolves to the venv's copy, even when the venv
     # isn't activated — YouTube breaks old yt-dlp releases often enough that
     # this matters.
+    yt_dlp_cmd = [sys.executable, "-m", "yt_dlp", "--no-playlist"]
+
+    # Title + YouTube's own thumbnail first — this is a quick metadata-only
+    # call, so the library entry is complete before the much slower video
+    # download/transcode below even starts. That way a big video that gets
+    # interrupted partway through (server restart, closed laptop, whatever)
+    # still leaves behind a session with a real title and thumbnail instead
+    # of a blank one.
+    meta_result = subprocess.run(
+        # --print implies --simulate, which would otherwise silently skip
+        # --write-thumbnail; --no-simulate overrides that back off.
+        yt_dlp_cmd + ["--skip-download", "--no-simulate", "--write-thumbnail",
+                      "--convert-thumbnails", "jpg",
+                      "-o", str(d / "thumb.%(ext)s"),
+                      "--print", "%(title)s", url],
+        capture_output=True, text=True,
+    )
+    title = meta_result.stdout.strip().splitlines()[-1] if meta_result.stdout.strip() else "YouTube video"
+    write_meta(d, title, "youtube")
+
     result = subprocess.run(
-        [sys.executable, "-m", "yt_dlp", "--no-playlist",
-         "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
-         "-o", str(src_dir / "download.%(ext)s"), url],
+        yt_dlp_cmd + ["-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+                      "-o", str(src_dir / "download.%(ext)s"), url],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
@@ -161,10 +245,13 @@ def fetch_youtube():
     if not downloaded:
         return jsonify(error="Download finished but no file was found"), 400
 
-    normalize_preview(downloaded, d)
+    preview = normalize_preview(downloaded, d)
+    if not (d / "thumb.jpg").exists():
+        make_thumbnail(preview, d)  # fallback if YouTube didn't have one
 
     return jsonify(
         session=sid,
+        title=title,
         video_url=f"/sessions/{sid}/source.mp4",
         download_url=f"/sessions/{sid}/source/{downloaded.name}",
     )
@@ -217,8 +304,9 @@ def export():
     data = request.get_json()
     sid = data["session"]
     captions = data["captions"]
-    fontsize = int(data.get("fontsize", 20))
+    fontsize = int(data.get("fontsize", 32))
     color = data.get("color", "#ffffff")
+    width = int(data.get("width", 480))
     name = "".join(c for c in data.get("name", "clip") if c.isalnum() or c in "-_") or "clip"
 
     d = session_dir(sid)
@@ -226,21 +314,26 @@ def export():
     ass = d / "captions.ass"
     write_ass(ass, captions, fontsize, color)
 
+    # Scale down at the burn-in step so both the MP4 and the GIF derived
+    # from it come out smaller — otherwise the MP4 kept the source's full
+    # resolution even though the GIF was already downscaled.
     burned = d / "burned.mp4"
-    run(["ffmpeg", "-y", "-i", str(clip), "-vf", f"ass={ass}",
-         "-c:a", "copy", str(burned)])
+    run(["ffmpeg", "-y", "-i", str(clip), "-vf",
+         f"ass={ass},scale={width}:-2:flags=lanczos",
+         "-c:v", "libx264", "-crf", "23", "-preset", "medium",
+         "-c:a", "aac", "-b:a", "128k", str(burned)])
 
     out_mp4 = d / f"{name}.mp4"
     shutil.copy(burned, out_mp4)
 
     palette = d / "palette.png"
     run(["ffmpeg", "-y", "-i", str(burned),
-         "-vf", "fps=15,scale=480:-1:flags=lanczos,palettegen", str(palette)])
+         "-vf", "fps=15,palettegen", str(palette)])
 
     out_gif = d / f"{name}.gif"
     run(["ffmpeg", "-y", "-i", str(burned), "-i", str(palette),
          "-filter_complex",
-         "fps=15,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse",
+         "fps=15[x];[x][1:v]paletteuse",
          str(out_gif)])
 
     return jsonify(
