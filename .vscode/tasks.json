@@ -8,6 +8,12 @@
       "problemMatcher": []
     },
     {
+      "label": "Fix: Update yt-dlp (YouTube 403 errors)",
+      "type": "shell",
+      "command": "venv/bin/pip install --upgrade yt-dlp",
+      "problemMatcher": []
+    },
+    {
       "label": "Run: Start App",
       "type": "shell",
       "command": "venv/bin/python app.py",
@@ -29,12 +35,6 @@
         "kind": "build",
         "isDefault": true
       }
-    },
-    {
-      "label": "Clean: clear session data",
-      "type": "shell",
-      "command": "rm -rf sessions && mkdir -p sessions",
-      "problemMatcher": []
     }
   ]
 }
