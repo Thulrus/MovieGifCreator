@@ -374,6 +374,11 @@
 <div class="step" id="step3">
   <h2><span class="num">3</span> Preview & auto-caption</h2>
   <video id="clipPlayer" controls></video>
+  <div class="slider-row">
+    <label>Max caption length</label>
+    <input type="range" id="maxCaptionChars" min="20" max="100" step="5" value="40">
+    <span class="slider-val" id="maxCaptionCharsVal">40</span>
+  </div>
   <button id="transcribeBtn">📝 Auto-Caption This Clip</button>
   <p class="status" id="transcribeStatus"></p>
 </div>
@@ -687,7 +692,7 @@ $('transcribeBtn').addEventListener('click', async () => {
   const data = await safeFetch('/api/transcribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session: sessionId })
+    body: JSON.stringify({ session: sessionId, max_chars: $('maxCaptionChars').value })
   });
   $('transcribeBtn').disabled = false;
   if (data.error) { $('transcribeStatus').textContent = 'Error: ' + data.error; return; }
@@ -741,6 +746,7 @@ $('addCaptionBtn').addEventListener('click', () => {
 
 // --- Step 5: Export ---
 $('fontSize').addEventListener('input', () => { $('fontSizeVal').textContent = $('fontSize').value; });
+$('maxCaptionChars').addEventListener('input', () => { $('maxCaptionCharsVal').textContent = $('maxCaptionChars').value; });
 
 $('makeBtn').addEventListener('click', async () => {
   const rows = document.querySelectorAll('#captionList .caption-row');

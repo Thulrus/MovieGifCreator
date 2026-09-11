@@ -46,6 +46,57 @@ def get_whisper_model():
     return _whisper_model
 
 
+DEFAULT_MAX_CAPTION_CHARS = 40
+
+
+def split_segment(seg: dict, max_chars: int) -> list:
+    """Break one Whisper segment into shorter caption chunks, at most
+    max_chars long, splitting on word boundaries. Uses per-word timestamps
+    when Whisper provides them so each chunk keeps accurate timing; falls
+    back to interpolating time proportionally by character offset."""
+    text = seg["text"].strip()
+    if len(text) <= max_chars:
+        return [{"start": round(seg["start"], 2), "end": round(seg["end"], 2), "text": text}]
+
+    words = seg.get("words") or []
+    if words:
+        tokens = [(w["word"].strip(), w["start"], w["end"]) for w in words if w["word"].strip()]
+    else:
+        # No word-level timestamps available: fake them by spreading the
+        # segment's duration evenly across characters.
+        raw_words = text.split()
+        total_chars = sum(len(w) for w in raw_words) or 1
+        duration = seg["end"] - seg["start"]
+        tokens = []
+        pos = 0
+        for w in raw_words:
+            frac_start = pos / total_chars
+            pos += len(w)
+            frac_end = pos / total_chars
+            tokens.append((w, seg["start"] + frac_start * duration, seg["start"] + frac_end * duration))
+
+    chunks, cur, cur_len = [], [], 0
+    for word, w_start, w_end in tokens:
+        addition = len(word) + (1 if cur else 0)
+        if cur and cur_len + addition > max_chars:
+            chunks.append(cur)
+            cur, cur_len = [], 0
+            addition = len(word)
+        cur.append((word, w_start, w_end))
+        cur_len += addition
+    if cur:
+        chunks.append(cur)
+
+    return [
+        {
+            "start": round(chunk[0][1], 2),
+            "end": round(chunk[-1][2], 2),
+            "text": " ".join(w for w, _, _ in chunk),
+        }
+        for chunk in chunks
+    ]
+
+
 def session_dir(sid: str) -> Path:
     d = DATA_DIR / sid
     d.mkdir(exist_ok=True, parents=True)
@@ -285,13 +336,17 @@ def transcribe():
 
     run(["ffmpeg", "-y", "-i", str(clip), "-ar", "16000", "-ac", "1", str(audio)])
 
+    try:
+        max_chars = int(data.get("max_chars", DEFAULT_MAX_CAPTION_CHARS))
+    except (TypeError, ValueError):
+        max_chars = DEFAULT_MAX_CAPTION_CHARS
+    max_chars = max(15, min(max_chars, 200))
+
     model = get_whisper_model()
-    result = model.transcribe(str(audio), fp16=False)
-    segments = [
-        {"start": round(seg["start"], 2), "end": round(seg["end"], 2),
-         "text": seg["text"].strip()}
-        for seg in result["segments"]
-    ]
+    result = model.transcribe(str(audio), fp16=False, word_timestamps=True)
+    segments = []
+    for seg in result["segments"]:
+        segments.extend(split_segment(seg, max_chars))
     # Whisper occasionally returns nothing for very short/quiet clips.
     if not segments:
         segments = [{"start": 0, "end": 3, "text": "(couldn't hear speech — type the quote here)"}]
