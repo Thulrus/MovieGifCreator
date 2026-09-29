@@ -34,6 +34,7 @@
     <span class="num">1</span><h2>Choose a video</h2>
     <span class="step-summary" id="sum1"></span>
     <button type="button" class="link step-edit">Change video</button>
+    <button type="button" class="link step-del" id="deleteCurrentBtn" title="Delete this video and everything made from it">Delete</button>
   </header>
   <div class="step-body">
     <div class="youtube-row" id="youtubeRow" hidden>
@@ -50,6 +51,13 @@
       <div class="dz-note" id="dzNote">MP4, MOV, WebM, MKV and most other formats.</div>
     </div>
     <input type="file" id="fileInput" accept="video/*,.mkv,.vob,.ts,.m2ts,.avi,.flv,.wmv" hidden>
+    <label class="check private-check" id="privateCheckRow" hidden>
+      <input type="checkbox" id="privateQuick">
+      <span>Using a shared or public computer? <b>Don’t save anything</b> after I close this tab.</span>
+    </label>
+    <p class="banner private-banner" id="privateBanner" hidden>
+      🕶 <span><b>Nothing is being saved.</b> Your videos, captions and GIFs disappear when you close this tab — download the GIFs you want to keep.</span>
+    </p>
     <p class="yt-note" id="ytNote" hidden>
       Got a YouTube link instead? Downloading from YouTube only works when you
       <button type="button" class="inline-link" data-help="youtube">run the app on your own computer</button>.
@@ -308,6 +316,27 @@
   </div>
 </section>
 
+<section class="storage-panel" id="storagePanel" hidden>
+  <details id="storageDetails">
+    <summary>
+      <span class="sp-title">What’s saved on this device</span>
+      <span class="sp-total" id="storageTotal"></span>
+    </summary>
+    <div class="sp-body">
+      <p class="sp-intro" id="storageIntro">This page only keeps things in this browser, on this device — nothing is uploaded. Here’s all of it, and how to remove it.</p>
+      <label class="check sp-private" id="privateRow">
+        <input type="checkbox" id="privateToggle">
+        <span><b>Don’t save my videos on this device</b> — for shared or public computers. Your clips, captions, GIFs and settings are forgotten when you close the tab.</span>
+      </label>
+      <div class="sp-rows" id="storageRows"></div>
+      <div class="sp-footer">
+        <button type="button" class="danger small" id="clearEverythingBtn">Clear everything this page has saved</button>
+        <span class="sp-note" id="storageNote2"></span>
+      </div>
+    </div>
+  </details>
+</section>
+
 <footer class="page-foot">
   <span id="footMode"></span>
   <a href="https://github.com/Thulrus/MovieGifCreator" target="_blank" rel="noopener">Source code on GitHub</a>
@@ -340,6 +369,11 @@
       <h3>Where are my videos and GIFs kept?</h3>
       <p>Your original video isn’t copied anywhere — the app reads it straight from where it is on your device. Your clips, captions and GIFs are saved in this browser’s storage (the “Your videos” list in step 1), so you can come back to them later. If you come back to pick a different part of a video, you’ll be asked to choose the file again.</p>
       <p>Nothing is synced anywhere else, and clearing your browser’s site data deletes the list, so <b>download the GIFs you want to keep</b>.</p>
+    </section>
+    <section class="for-browser">
+      <h3>Using a shared or public computer?</h3>
+      <p>Tick <i>Don’t save anything</i> under the drop zone in step 1 before you start. The page then keeps nothing personal after you close the tab — no videos, captions, GIFs or settings — so download your GIFs before you leave. You can also clear everything the page has saved from <i>What’s saved on this device</i> at the bottom of the page.</p>
+      <p>The video engine and speech model it downloads are the same for everyone and contain nothing about you, so they can stay (and save the next person a download) — but you can remove those there too.</p>
     </section>
     <section id="helpYoutube">
       <h3>Can I use a YouTube link?</h3>

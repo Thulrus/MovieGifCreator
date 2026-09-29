@@ -14,8 +14,22 @@ let queue = Promise.resolve();
 let logTail = [];
 let fontsReady = null;
 
-// Fetch a file into a blob: URL, reporting download progress.
+// The engine is kept in its own named cache (rather than left to the
+// browser's ordinary HTTP cache) so the page can show how big it is and
+// remove it when asked.
+export const ENGINE_CACHE = 'gifmaker-video-engine';
+
+async function openCache() {
+  try { return await caches.open(ENGINE_CACHE); } catch (e) { return null; }  // e.g. some private windows
+}
+
+// Fetch a file into a blob: URL (from the cache when possible), reporting
+// download progress.
 async function fetchBlobURL(url, type, onProgress, expected) {
+  const cache = await openCache();
+  const hit = cache && await cache.match(url);
+  if (hit) return URL.createObjectURL(new Blob([await hit.arrayBuffer()], { type }));
+
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Couldn't download ${url} (${res.status})`);
   // Content-Length is the compressed size when the CDN compresses, so it
@@ -37,7 +51,29 @@ async function fetchBlobURL(url, type, onProgress, expected) {
   } else {
     blob = new Blob([await res.arrayBuffer()], { type });
   }
+  if (cache) {
+    await cache.put(url, new Response(blob, { headers: { 'Content-Type': type, 'Content-Length': String(blob.size) } }))
+      .catch(() => {});  // out of space: it just downloads again next time
+  }
   return URL.createObjectURL(blob);
+}
+
+// Bytes the saved engine takes up (0 if it isn't saved).
+export async function engineCacheSize() {
+  // caches.open() would create the cache just by looking, so check first.
+  if (!(await caches.has(ENGINE_CACHE).catch(() => false))) return 0;
+  const cache = await openCache();
+  if (!cache) return 0;
+  let bytes = 0;
+  for (const r of await cache.keys()) {
+    const res = await cache.match(r);
+    bytes += Number(res.headers.get('Content-Length')) || (await res.blob()).size;
+  }
+  return bytes;
+}
+
+export async function clearEngineCache() {
+  try { await caches.delete(ENGINE_CACHE); } catch (e) { /* no Cache Storage */ }
 }
 
 export function engineLoaded() { return !!(ff && ff.loaded); }

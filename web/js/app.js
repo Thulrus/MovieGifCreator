@@ -19,6 +19,9 @@ let duration = 0, fps = 30;
 let startTime = 0, endTime = 0;
 let clipRange = null;  // the {start, end} of the source video that the current clip covers
 let restoring = false;
+// "Don't save my videos" (for shared computers): everything stays in memory.
+const PRIVATE_KEY = 'gifmaker.private';
+let privateMode = false;
 
 // --- Formatting ---
 function fmt(t) { return t.toFixed(2) + 's'; }
@@ -88,8 +91,11 @@ async function working(fn) {
   busy++;
   try { return await fn(); } finally { busy--; }
 }
+// In shared-computer mode, closing the tab also throws away everything made.
+let leaving = false;
 window.addEventListener('beforeunload', e => {
-  if (busy && backend && backend.mode === 'browser') { e.preventDefault(); e.returnValue = ''; }
+  if (leaving || !backend || backend.mode !== 'browser') return;
+  if (busy || (privateMode && libEntries.length)) { e.preventDefault(); e.returnValue = ''; }
 });
 
 // --- Steps (accordion: one open, finished ones collapse to a summary) ---
@@ -184,6 +190,7 @@ window.addEventListener('pagehide', () => {
 });
 
 function remember(key, value) {
+  if (privateMode) return;
   try { localStorage.setItem('gifmaker.' + key, JSON.stringify(value)); } catch (e) { /* storage blocked */ }
 }
 function recall(key) {
@@ -278,13 +285,16 @@ async function loadLibrary() {
   renderStorage();
 }
 
-async function renderStorage() {
-  const u = backend.usage ? await backend.usage() : null;
-  $('storageNote').hidden = !u;
-  if (!u) return;
-  $('storageNote').textContent = `Saved in this browser only · using ${fmtSize(u.used)}`
-    + (u.quota ? ` of the ${fmtSize(u.quota)} it allows` : '')
-    + '. Download the GIFs you want to keep.';
+function renderStorage() {
+  $('storageNote').hidden = backend.mode !== 'browser';
+  $('storageNote').innerHTML = privateMode
+    ? 'Kept only until you close this tab. Download the GIFs you want to keep. '
+    : 'Saved in this browser only. Download the GIFs you want to keep. ';
+  const link = el('button', 'inline-link', 'See what’s saved');
+  link.type = 'button';
+  link.addEventListener('click', openStoragePanel);
+  $('storageNote').appendChild(link);
+  renderStoragePanel();
 }
 
 function renderLibrary() {
@@ -462,7 +472,10 @@ async function openSession(sid) {
   reached = info.clip ? 3 : 2;
   openStep(reached);
   updateRangeUI();
-  history.replaceState(null, '', location.pathname + location.search + '#' + sid);
+  // The id in the URL lets a refresh reopen this video (pointless, and a
+  // trace left in the history, when nothing is being saved).
+  if (!privateMode) history.replaceState(null, '', location.pathname + location.search + '#' + sid);
+  document.body.classList.add('has-session');
   renderLibrary();
   restoring = false;
 }
@@ -476,6 +489,7 @@ function closeSession() {
   reached = 1;
   openStep(1);
   history.replaceState(null, '', location.pathname + location.search);
+  document.body.classList.remove('has-session');
 }
 
 // In browser mode the original file is only used for the visit it was picked
@@ -1534,6 +1548,204 @@ function renderExports(list) {
 $('anotherRangeBtn').addEventListener('click', () => { openStep(2); $('step2').scrollIntoView({ behavior: 'smooth' }); });
 $('newVideoBtn').addEventListener('click', () => { openStep(1); $('step1').scrollIntoView({ behavior: 'smooth' }); });
 
+// --- Deleting the open video ---
+$('deleteCurrentBtn').addEventListener('click', e => {
+  e.stopPropagation();  // it sits in step 1's header, which opens step 1 when clicked
+  if (!sessionId) return;
+  deleteEntry(libEntries.find(x => x.session === sessionId)
+    || { session: sessionId, title: session.title, export_count: exportList.length });
+});
+
+// --- Shared-computer mode: save nothing personal ---
+function privateWanted() {
+  try { return localStorage.getItem(PRIVATE_KEY) === '1'; } catch (e) { return false; }
+}
+function clearSettings(keepPrivateFlag) {
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('gifmaker.') && !(keepPrivateFlag && key === PRIVATE_KEY)) localStorage.removeItem(key);
+    }
+  } catch (e) { /* storage blocked */ }
+}
+function settingsSaved() {
+  try { return Object.keys(localStorage).some(k => k.startsWith('gifmaker.') && k !== PRIVATE_KEY); } catch (e) { return false; }
+}
+function syncPrivateUI() {
+  const browser = backend.mode === 'browser';
+  $('privateQuick').checked = $('privateToggle').checked = privateMode;
+  $('privateCheckRow').hidden = !browser || privateMode;
+  $('privateBanner').hidden = !privateMode;
+  $('privateRow').hidden = !browser;
+}
+function reloadFresh() {
+  leaving = true;
+  location.replace(location.pathname + location.search);
+}
+async function setPrivate(on) {
+  if (on === privateMode) return;
+  if (on) {
+    const inv = await backend.storage();
+    const n = inv.videos ? inv.videos.count : 0;
+    const msg = 'Stop saving anything on this device?\n\n'
+      + (n ? `This also deletes the ${n} video${n === 1 ? '' : 's'} already saved in this browser, with their captions and GIFs. Download any GIFs you want to keep first.\n\n` : '')
+      + 'From now on, whatever you make is forgotten when you close this tab. (The downloaded video engine and speech model aren’t personal, so they stay unless you remove them.)';
+    if (!confirm(msg)) { syncPrivateUI(); return; }
+    await backend.clearVideos();
+    clearSettings(false);
+    try { localStorage.setItem(PRIVATE_KEY, '1'); } catch (e) { /* storage blocked */ }
+  } else {
+    if (libEntries.length && !confirm('Start saving your videos on this device again?\n\nWhat you made during this visit wasn’t saved and will be cleared now — download any GIFs you want to keep first.')) {
+      syncPrivateUI();
+      return;
+    }
+    try { localStorage.removeItem(PRIVATE_KEY); } catch (e) { /* storage blocked */ }
+  }
+  reloadFresh();
+}
+['privateQuick', 'privateToggle'].forEach(id => $(id).addEventListener('change', e => setPrivate(e.target.checked)));
+
+// --- What's saved on this device ---
+function openStoragePanel() {
+  $('storageDetails').open = true;
+  $('storagePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+$('storageDetails').addEventListener('toggle', () => { if ($('storageDetails').open) renderStoragePanel(); });
+
+function storageRow({ title, desc, size, button, onClick, list }) {
+  const row = el('div', 'sp-row');
+  const text = el('div');
+  text.append(el('b', '', title), el('div', 'sp-desc', desc));
+  row.append(text, el('span', 'sp-size', size || ''));
+  if (button) {
+    const b = el('button', 'secondary small', button);
+    b.type = 'button';
+    b.addEventListener('click', onClick);
+    row.appendChild(b);
+  } else {
+    row.appendChild(el('span'));
+  }
+  if (list && list.length) {
+    const ul = el('ul', 'sp-list');
+    list.forEach(([name, value]) => {
+      const li = el('li');
+      li.append(el('span', '', name), el('span', '', value));
+      ul.appendChild(li);
+    });
+    row.appendChild(ul);
+  }
+  return row;
+}
+
+let storageSeq = 0;
+async function renderStoragePanel() {
+  if (!backend.storage) return;
+  const seq = ++storageSeq;
+  const inv = await backend.storage();
+  if (seq !== storageSeq || inv.error) return;
+  $('storagePanel').hidden = false;
+  const browser = backend.mode === 'browser';
+  const rows = [];
+  let total = inv.engine + inv.models.reduce((n, m) => n + m.bytes, 0) + (inv.modelOther || 0);
+
+  if (inv.videos) {
+    const v = inv.videos;
+    total += v.bytes;
+    rows.push(storageRow({
+      title: 'Your videos',
+      desc: (v.count
+        ? `${v.count} video${v.count === 1 ? '' : 's'}: clips, captions, thumbnails and the GIFs you made. Your original video files are never copied.`
+        : 'Nothing yet. Your original video files are never copied — only the clips, captions and GIFs you make.')
+        + (inv.memoryOnly ? ' Forgotten when you close this tab.' : ''),
+      size: v.count ? fmtSize(v.bytes) : '',
+      button: v.count ? 'Delete all videos' : null,
+      list: v.items.map(x => [x.title, fmtSize(x.bytes)]),
+      onClick: async () => {
+        if (!confirm(`Delete all ${v.count} video${v.count === 1 ? '' : 's'} saved here, with their captions and GIFs?\n\nDownload any GIFs you want to keep first. Your original video files aren’t affected.`)) return;
+        const r = await backend.clearVideos();
+        if (r.error) { alert(r.error); return; }
+        if (sessionId) closeSession();
+        loadLibrary();
+      },
+    }));
+  } else {
+    rows.push(storageRow({
+      title: 'Your videos',
+      desc: 'Kept in the app’s sessions/ folder on this computer, not in the browser. Delete them one at a time from “Your videos” in step 1.',
+    }));
+  }
+
+  rows.push(storageRow({
+    title: 'Video engine',
+    desc: inv.engine
+      ? 'Cuts your clips and makes the GIFs. If you remove it, it downloads again (about 31 MB) the next time it’s needed.'
+      : browser ? 'Not downloaded yet — it downloads (about 31 MB) the first time you pick a part of a video.'
+        : 'Not needed: the app’s server does this.',
+    size: inv.engine ? fmtSize(inv.engine) : '',
+    button: inv.engine ? 'Remove' : null,
+    onClick: async () => {
+      if (!confirm(`Remove the video engine (${fmtSize(inv.engine)})?\n\nYou’ll need to download it again (about 31 MB) the next time you cut a clip or make a GIF.`)) return;
+      await backend.clearEngine();
+      renderStoragePanel();
+    },
+  }));
+
+  const usesBrowserSpeech = browser || backend.hasWhisper === false;
+  if (inv.models.length) {
+    inv.models.forEach(m => rows.push(storageRow({
+      title: `Speech model: ${m.name[0].toUpperCase() + m.name.slice(1)}`,
+      desc: 'Writes the auto-captions. If you remove it, it downloads again the next time you use Auto-caption with it.',
+      size: fmtSize(m.bytes),
+      button: 'Remove',
+      onClick: async () => {
+        if (!confirm(`Remove the ${m.name} speech model (${fmtSize(m.bytes)})?\n\nIt will download again (${fmtSize(m.bytes)}) the next time you use Auto-caption with it.`)) return;
+        await backend.clearModel(m.name);
+        const cm = cfg.models.find(x => x.name === m.name);
+        if (cm && usesBrowserSpeech) { cm.downloaded = false; populateModels($('modelSel').value); }
+        renderStoragePanel();
+      },
+    })));
+  } else {
+    rows.push(storageRow({
+      title: 'Speech models',
+      desc: usesBrowserSpeech
+        ? 'None downloaded yet — one downloads (41–250 MB, depending on which you pick) the first time you use Auto-caption.'
+        : 'Not needed: the app’s server does the captions (its models are in ~/.cache/whisper).',
+    }));
+  }
+
+  const hasSettings = settingsSaved();
+  rows.push(storageRow({
+    title: 'Your settings',
+    desc: privateMode
+      ? 'Not saved. The page only remembers that “Don’t save my videos” is on.'
+      : hasSettings ? 'Your last caption style, GIF size and language, so new videos start the way you like.'
+        : 'Nothing saved yet (your last caption style, GIF size and language will be).',
+    button: hasSettings ? 'Reset' : null,
+    onClick: () => { clearSettings(true); renderStoragePanel(); },
+  }));
+
+  $('storageRows').replaceChildren(...rows);
+  $('storageTotal').textContent = total ? `· ${fmtSize(total)}` : '· nothing yet';
+  $('storageIntro').textContent = browser
+    ? 'This page only keeps things in this browser, on this device — nothing is uploaded. Here’s all of it, and how to remove it.'
+    : 'Your videos are kept by the app on this computer. This is what the page itself keeps in this browser.';
+  $('clearEverythingBtn').textContent = browser ? 'Clear everything this page has saved' : 'Clear everything saved in this browser';
+  $('storageNote2').textContent = 'Your browser may also keep ordinary temporary copies of this page’s code; it clears those by itself.'
+    + (browser && !inv.persisted && !inv.memoryOnly ? ' If this device runs low on space, the browser might clear the page’s saved data on its own.' : '');
+}
+
+$('clearEverythingBtn').addEventListener('click', async () => {
+  const browser = backend.mode === 'browser';
+  const msg = browser
+    ? 'Clear everything this page has saved on this device?\n\n• all your videos, with their captions and GIFs\n• the video engine and speech models (they’ll download again when needed)\n• your settings\n\nDownload any GIFs you want to keep first. Your original video files aren’t affected.'
+    : 'Clear everything saved in this browser?\n\n• the video engine and speech models, if it downloaded any\n• your settings\n\nYour videos in the sessions/ folder aren’t touched.';
+  if (!confirm(msg)) return;
+  const r = await backend.clearEverything();
+  if (r && r.error) { alert(r.error); return; }
+  clearSettings(false);
+  reloadFresh();
+});
+
 // --- Help ---
 function openHelp(section) {
   $('helpDialog').showModal();
@@ -1565,6 +1777,10 @@ async function pickBackend() {
     } catch (e) { /* no server here */ }
   }
   const { browserBackend } = await import('./backend-browser.js');
+  if (privateWanted()) {
+    browserBackend.usePrivateMode();
+    privateMode = true;
+  }
   return [browserBackend, await browserBackend.config()];
 }
 
@@ -1601,7 +1817,7 @@ function browserSupportProblem() {
 
   $('modeChip').hidden = false;
   $('modeChip').innerHTML = browser
-    ? '🔒 <b>Private:</b> runs entirely in your browser'
+    ? (privateMode ? '🕶 <b>Not saving anything:</b> runs entirely in your browser' : '🔒 <b>Private:</b> runs entirely in your browser')
     : '💻 <b>Running on your computer</b>' + (c.youtube ? ' · YouTube enabled' : '');
   $('modeChip').title = browser
     ? 'Your videos never leave this computer — all the processing happens in this tab.'
@@ -1624,6 +1840,7 @@ function browserSupportProblem() {
     }
   }
 
+  syncPrivateUI();
   cfg.fonts.forEach(f => {
     const opt = el('option', '', f.label);
     opt.value = f.family;

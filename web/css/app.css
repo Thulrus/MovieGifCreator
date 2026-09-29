@@ -746,3 +746,66 @@ body.mode-browser .for-server, body.mode-server .for-browser { display: none; }
   .caption-row input.cap-text { order: 5; flex-basis: 100%; }
   .caption-row .cap-del { margin-left: auto; }
 }
+
+/* --- Storage & privacy --- */
+button.step-del { flex-shrink: 0; color: var(--muted); }
+button.step-del:hover { color: var(--bad); background: var(--raised); }
+.step-edit + .step-del { margin-left: 0; }
+.step:not(.collapsed) .step-del, body:not(.has-session) .step-del { display: none; }
+.private-check { margin-top: 12px; color: var(--muted); align-items: flex-start; }
+.private-check b, .sp-private b { color: var(--text); }
+.private-check input, .sp-private input { margin-top: 3px; flex-shrink: 0; }
+.private-banner { margin: 12px 0 0; display: flex; gap: 10px; }
+.storage-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  margin-top: 12px;
+}
+.storage-panel summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  cursor: pointer;
+  list-style: none;
+}
+.storage-panel summary::-webkit-details-marker { display: none; }
+.storage-panel summary::before { content: '▸'; color: var(--muted); }
+.storage-panel details[open] summary::before { content: '▾'; }
+.sp-title { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.sp-total { color: var(--muted); font-size: 13px; }
+.sp-body { padding: 0 20px 18px; }
+.sp-intro { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+.sp-private { align-items: flex-start; background: var(--inset); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; color: var(--muted); }
+.sp-rows { display: flex; flex-direction: column; gap: 8px; }
+.sp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px 14px;
+  align-items: center;
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.sp-row b { display: block; font-size: 14px; }
+.sp-row .sp-desc { color: var(--muted); font-size: 12px; }
+.sp-row .sp-size { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sp-row .sp-list { grid-column: 1 / -1; margin: 4px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--muted); }
+.sp-row .sp-list li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; border-top: 1px dashed var(--border); }
+.sp-row .sp-list li span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-footer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.sp-note { color: var(--muted); font-size: 12px; flex: 1; min-width: 200px; }
+button.danger { background: color-mix(in srgb, var(--bad) 22%, var(--raised)); color: #fecaca; }
+button.danger:hover { background: color-mix(in srgb, var(--bad) 40%, var(--raised)); }
+@media (max-width: 600px) {
+  .sp-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .sp-row button { grid-column: 1 / -1; justify-self: start; }
+  .storage-panel summary, .sp-body { padding-left: 14px; padding-right: 14px; }
+}
+/* Phones have no hover, so the rename/delete buttons on library cards stay visible. */
+@media (hover: none) {
+  .lib-actions { display: flex; }
+}

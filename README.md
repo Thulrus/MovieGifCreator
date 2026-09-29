@@ -30,6 +30,12 @@ device. Download the GIFs you want to keep, because clearing the site's data
 deletes them. To pick a new moment from a video on a later visit, you choose
 the file again.
 
+*What's saved on this device*, at the bottom of the page, lists everything
+the site keeps, with sizes: your videos, the video engine, speech models and
+settings. Each one can be removed there, or you can clear everything at once.
+On a shared or public computer, tick *Don't save anything* under the drop
+zone before you start, and nothing personal is kept after the tab closes.
+
 ## Run it on your own computer (adds YouTube downloads)
 
 You'll need Python 3.10+ and [ffmpeg](https://ffmpeg.org/download.html)

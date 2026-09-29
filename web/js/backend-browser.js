@@ -5,7 +5,8 @@
 // doesn't need to know which one it's talking to.
 
 import * as media from './media.js';
-import { projects, files, persist, usage } from './store.js';
+import { projects, files, persist, persisted, clearAll, deleteDatabase, useMemoryOnly, isMemoryOnly } from './store.js';
+import { toolInventory, toolActions } from './tool-caches.js';
 import { buildAss } from './captions.js';
 import * as speech from './speech.js';
 
@@ -275,6 +276,18 @@ async function takeFile(id, file, onProgress) {
   }
 }
 
+// The first version copied every video into the browser before using it.
+// Those copies can be big (and phones are short on space), and the file is
+// now read from the device instead, so they're removed.
+async function dropOldSourceCopies() {
+  if (isMemoryOnly()) return;
+  for (const p of await projects.all()) {
+    if (!p.hasSource) continue;
+    await files.delete(p.id, 'source');
+    await projects.update(p.id, q => { q.hasSource = false; });
+  }
+}
+
 // --- The backend -----------------------------------------------------------------
 
 export const browserBackend = {
@@ -284,6 +297,7 @@ export const browserBackend = {
     if (!fontsCfg) fontsCfg = await (await fetch(new URL('../fonts/fonts.json', import.meta.url))).json();
     const have = await speech.downloadedModels();
     persist();
+    await dropOldSourceCopies();
     return {
       mode: 'browser',
       youtube: false,
@@ -302,7 +316,41 @@ export const browserBackend = {
     return { sessions: await Promise.all(all.map(summary)) };
   }),
 
-  usage,
+  // "Shared computer" mode: keep everything in memory, so nothing personal
+  // is left behind when the tab closes. Must be chosen before anything else.
+  usePrivateMode: useMemoryOnly,
+
+  // Everything this page keeps on the device, for the storage panel.
+  storage: safe(async () => {
+    const all = await projects.all();
+    const sizes = await files.sizes();
+    const items = all
+      .map(p => ({ id: p.id, title: p.title, bytes: sizes.get(p.id) || 0 }))
+      .sort((a, b) => b.bytes - a.bytes);
+    return {
+      videos: { count: items.length, bytes: items.reduce((n, x) => n + x.bytes, 0), items },
+      ...(await toolInventory()),
+      persisted: await persisted(),
+      memoryOnly: isMemoryOnly(),
+    };
+  }),
+  ...toolActions,
+
+  clearVideos: safe(async () => {
+    for (const id of new Set([...urlCache.keys()].map(k => k.split('/')[0]))) forgetAllURLs(id);
+    memSources.clear();
+    await clearAll();
+    return { ok: true };
+  }),
+
+  clearEverything: safe(async () => {
+    for (const id of new Set([...urlCache.keys()].map(k => k.split('/')[0]))) forgetAllURLs(id);
+    memSources.clear();
+    await clearAll();
+    await deleteDatabase();
+    await toolActions.clearAllTools();
+    return { ok: true };
+  }),
 
   open: safe(async (id) => {
     const p = await projects.get(id);

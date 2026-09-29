@@ -71,7 +71,18 @@ export const serverBackend = {
 
   config: () => api('api/config'),
   library: () => api('api/library'),
-  usage: async () => null,
+  // In this mode videos live in the server's sessions/ folder; the browser
+  // only keeps the downloaded tools (if it ever needed them) and settings.
+  async storage() {
+    const { toolInventory } = await import('./tool-caches.js');
+    return { videos: null, ...(await toolInventory()), persisted: true, memoryOnly: false };
+  },
+  async clearEngine() { return (await import('./tool-caches.js')).toolActions.clearEngine(); },
+  async clearModel(name) { return (await import('./tool-caches.js')).toolActions.clearModel(name); },
+  async clearEverything() {
+    await (await import('./tool-caches.js')).toolActions.clearAllTools();
+    return { ok: true };
+  },
   open: sid => api(`api/sessions/${sid}`),
   saveState: (sid, state) => api(`api/sessions/${sid}/state`, { method: 'PUT', json: state }),
   // Survives the page closing, so the last edits aren't lost.

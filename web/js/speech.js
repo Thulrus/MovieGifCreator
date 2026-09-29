@@ -53,10 +53,45 @@ function whisper(model, language, audio, onMessage) {
 }
 
 // transformers.js keeps downloaded models in this Cache Storage bucket.
+const MODEL_CACHE = 'transformers-cache';
+
+// Bytes per saved model, plus `other` for anything else transformers.js
+// cached there (tokenizer files and the like are tiny, but count them).
+export async function modelCacheSizes() {
+  const sizes = new Map();
+  let other = 0;
+  try {
+    // caches.open() would create the cache just by looking, so check first.
+    if (!(await caches.has(MODEL_CACHE))) return { sizes, other };
+    const cache = await caches.open(MODEL_CACHE);
+    for (const r of await cache.keys()) {
+      const res = await cache.match(r);
+      const bytes = Number(res.headers.get('Content-Length')) || (await res.blob()).size;
+      const m = MODELS.find(x => r.url.includes(modelRepo(x.name)));
+      if (m) sizes.set(m.name, (sizes.get(m.name) || 0) + bytes);
+      else other += bytes;
+    }
+  } catch (e) { /* no Cache Storage */ }
+  return { sizes, other };
+}
+
+export async function clearModel(name) {
+  try {
+    if (!(await caches.has(MODEL_CACHE))) return;
+    const cache = await caches.open(MODEL_CACHE);
+    for (const r of await cache.keys()) if (r.url.includes(modelRepo(name))) await cache.delete(r);
+  } catch (e) { /* no Cache Storage */ }
+}
+
+export async function clearAllModels() {
+  try { await caches.delete(MODEL_CACHE); } catch (e) { /* no Cache Storage */ }
+}
+
 export async function downloadedModels() {
   const have = new Set();
   try {
-    const cache = await caches.open('transformers-cache');
+    if (!(await caches.has(MODEL_CACHE))) return have;
+    const cache = await caches.open(MODEL_CACHE);
     const keys = (await cache.keys()).map(r => r.url);
     for (const m of MODELS) {
       if (keys.some(u => u.includes(modelRepo(m.name)) && u.includes('decoder_model_merged_quantized'))) have.add(m.name);
