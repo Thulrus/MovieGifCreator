@@ -24,9 +24,11 @@ browser (Chrome, Edge or Firefox work best).
 The first time you make a GIF, your browser downloads the tools it needs: a
 video engine (about 30 MB) and a speech model for auto-captions (41–250 MB,
 depending on which one you pick). Both are cached, so later visits start
-right away. Your videos, captions and GIFs are kept in the browser's storage
-on that computer. Download the GIFs you want to keep, because clearing the
-site's data deletes them.
+right away. Your video is read straight from your device and never copied.
+Your clips, captions and GIFs are kept in the browser's storage on that
+device. Download the GIFs you want to keep, because clearing the site's data
+deletes them. To pick a new moment from a video on a later visit, you choose
+the file again.
 
 ## Run it on your own computer (adds YouTube downloads)
 

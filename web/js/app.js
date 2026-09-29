@@ -395,7 +395,7 @@ async function renameEntry(e) {
 async function deleteEntry(e) {
   const gifs = e.export_count ? ` and the ${e.export_count} GIF${e.export_count === 1 ? '' : 's'} made from it` : '';
   const what = backend.mode === 'browser'
-    ? 'This removes the video from this browser for good — you’d have to add the file again to reuse it.'
+    ? 'This removes its clip, captions and GIFs from this browser for good. (Your original video file isn’t affected.)'
     : 'This removes the downloaded video from your list for good — you’d have to download it again to reuse it.';
   if (!confirm(`Delete "${e.title}"${gifs}?\n\n${what}`)) return;
   const res = await backend.remove(e.session);
@@ -478,17 +478,17 @@ function closeSession() {
   history.replaceState(null, '', location.pathname + location.search);
 }
 
-// In browser mode the original file might not be stored (it was too big for
-// the browser, or site data was cleared). The clip and GIFs are still there,
-// but picking a new range needs the file again.
+// In browser mode the original file is only used for the visit it was picked
+// in (it's never copied). Coming back later, the clip and GIFs are still
+// there, but picking a new range needs the file again.
 function setNeedsSource(needs, name) {
   $('relinkBanner').hidden = !needs;
   $('rangeTools').classList.toggle('disabled', needs);
   $('rangeBars').classList.toggle('disabled', needs);
   if (needs) {
     $('relinkText').textContent = name
-      ? `To pick a different part of it, choose “${name}” again.`
-      : 'To pick a different part of it, choose the same file again.';
+      ? `The app doesn’t keep a copy of your video — it’s “${name}” on your device.`
+      : 'The app doesn’t keep a copy of your video, so it needs the same file again.';
   }
 }
 async function relinkFile(file) {

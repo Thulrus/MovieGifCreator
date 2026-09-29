@@ -12,8 +12,10 @@ import * as speech from './speech.js';
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 let fontsCfg = null;
-// If the browser refuses to store a big source file, it's kept in memory for
-// this visit only (and the page asks for it again next time).
+// The original video files, used straight from wherever the user picked them
+// (copying a whole movie into browser storage is slow, especially on phones).
+// Only kept for this visit: coming back later, the page asks for the file
+// again. Clips, captions and GIFs are small and are always saved.
 const memSources = new Map();
 
 // --- Small helpers -----------------------------------------------------------
@@ -245,17 +247,12 @@ async function prepare(id, onProgress) {
 async function takeFile(id, file, onProgress) {
   onProgress({ progress: null, message: `Opening ${file.name}…` });
   const check = await checkPlayable(file);
-  onProgress({ progress: null, message: 'Saving a copy in this browser so you can come back to it…' });
-  let stored = true;
-  try {
-    await putFile(id, 'source', file);
-  } catch (e) {
-    console.warn('Could not store the source file', e);
-    stored = false;
-    memSources.set(id, file);
-  }
+  memSources.set(id, file);
+  forgetURL(id, 'source');
+  // Projects from before this change have a stored copy; a relinked file replaces it.
+  await files.delete(id, 'source');
   await projects.update(id, p => {
-    p.hasSource = stored;
+    p.hasSource = false;
     p.sourceName = file.name;
     p.sourceSize = file.size;
     if (check.playable) {
