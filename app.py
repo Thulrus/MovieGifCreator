@@ -17,6 +17,7 @@ Workflow:
 """
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -211,6 +212,29 @@ def make_thumbnail(video_path: Path, d: Path):
             return
 
 
+def make_waveform(clip: Path, d: Path) -> bool:
+    """Render the clip's audio as a waveform strip for the caption timeline.
+    Measures the peak level first and boosts it to 0dB so quiet dialogue
+    still shows up. Returns False if the clip has no audio or ffmpeg fails."""
+    probe = subprocess.run(
+        ["ffmpeg", "-i", str(clip), "-af", "volumedetect", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    m = re.search(r"max_volume: (-?[\d.]+) dB", probe.stderr)
+    if probe.returncode != 0 or not m:
+        return False
+    gain = min(max(-float(m.group(1)), 0), 40)
+    wave = d / "waveform.png"
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-i", str(clip), "-filter_complex",
+         f"aformat=channel_layouts=mono,volume={gain}dB,"
+         "showwavespic=s=1600x160:colors=0x7aa2ff:scale=sqrt:draw=full:filter=peak",
+         "-frames:v", "1", str(wave)],
+        capture_output=True, text=True,
+    )
+    return result.returncode == 0 and wave.exists()
+
+
 def write_meta(d: Path, title: str, source_type: str):
     (d / "meta.json").write_text(json.dumps({
         "title": title, "source_type": source_type, "created": time.time(),
@@ -323,7 +347,11 @@ def cut():
          "-c:v", "libx264", "-c:a", "aac", "-avoid_negative_ts", "make_zero",
          str(clip)])
 
-    return jsonify(clip_url=f"/sessions/{sid}/clip.mp4")
+    has_wave = make_waveform(clip, d)
+    return jsonify(
+        clip_url=f"/sessions/{sid}/clip.mp4",
+        waveform_url=f"/sessions/{sid}/waveform.png" if has_wave else None,
+    )
 
 
 @app.route("/api/transcribe", methods=["POST"])
@@ -345,13 +373,18 @@ def transcribe():
     model = get_whisper_model()
     result = model.transcribe(str(audio), fp16=False, word_timestamps=True)
     segments = []
+    words = []
     for seg in result["segments"]:
         segments.extend(split_segment(seg, max_chars))
+        # Word boundaries are sent along so the caption timeline can snap to them.
+        for w in seg.get("words") or []:
+            if w["word"].strip():
+                words.append({"start": round(w["start"], 2), "end": round(w["end"], 2)})
     # Whisper occasionally returns nothing for very short/quiet clips.
     if not segments:
         segments = [{"start": 0, "end": 3, "text": "(couldn't hear speech — type the quote here)"}]
 
-    return jsonify(segments=segments)
+    return jsonify(segments=segments, words=words)
 
 
 @app.route("/api/export", methods=["POST"])

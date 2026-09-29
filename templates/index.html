@@ -179,6 +179,108 @@
   }
   .caption-row .cap-del:hover { color: var(--text); background: #2c3038; border-radius: 6px; }
   #addCaptionBtn { margin-top: 4px; }
+  .caption-row { border-left: 3px solid var(--c, var(--border)); }
+  .caption-row.selected, .caption-row.hover { background: #1b1e24; box-shadow: inset 0 0 0 1px var(--c); }
+  .caption-row .cap-num {
+    flex-shrink: 0;
+    width: 24px; height: 24px;
+    margin: 0; padding: 0;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--c) 25%, #16181d);
+    border: 1px solid var(--c);
+    color: var(--c);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .caption-row .cap-num:hover { background: color-mix(in srgb, var(--c) 45%, #16181d); }
+  .video-wrap { position: relative; }
+  #clipPlayer { cursor: pointer; }
+  .clip-controls { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  #clipPlayBtn { background: #2c3038; width: 92px; padding: 6px 10px; font-size: 12px; margin: 0; border-radius: 6px; }
+  #clipPlayBtn:hover { background: #3a3d45; }
+  .clip-time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .cap-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    pointer-events: none;
+    font-family: "DejaVu Sans", Verdana, sans-serif;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.17;
+  }
+  .cap-overlay div { max-width: 100%; text-wrap: balance; overflow-wrap: anywhere; }
+  .cap-timeline {
+    position: relative;
+    margin: 14px 0 6px;
+    background: #16181d;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    user-select: none;
+    touch-action: none;
+    cursor: pointer;
+  }
+  .cap-lanes { position: relative; min-height: 38px; }
+  .cap-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 13px;
+    pointer-events: none;
+  }
+  .cap-block {
+    position: absolute;
+    height: 26px;
+    min-width: 4px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 7px;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 12px;
+    background: color-mix(in srgb, var(--c) 28%, #16181d);
+    border: 1px solid var(--c);
+    border-radius: 5px;
+    cursor: grab;
+  }
+  .cap-block:active { cursor: grabbing; }
+  .cap-block:hover, .cap-block.hover { background: color-mix(in srgb, var(--c) 45%, #16181d); }
+  .cap-block.selected { box-shadow: 0 0 0 2px var(--text); z-index: 2; }
+  .cap-badge { flex-shrink: 0; font-weight: 700; color: var(--c); }
+  .cap-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+  .cap-edge { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 1; }
+  .cap-edge.l { left: 0; }
+  .cap-edge.r { right: 0; }
+  .cap-edge:hover { background: color-mix(in srgb, var(--c) 70%, transparent); }
+  .cap-wave {
+    position: relative;
+    height: 48px;
+    border-top: 1px solid var(--border);
+    background: no-repeat center / 100% 100%;
+  }
+  .cap-word { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.1); }
+  .cap-ruler { position: relative; height: 18px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted); }
+  .cap-tick { position: absolute; top: 0; width: 1px; height: 4px; background: var(--muted); }
+  .cap-tick span { position: absolute; top: 3px; transform: translateX(-50%); white-space: nowrap; }
+  .cap-playhead {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--good);
+    pointer-events: none;
+    z-index: 3;
+  }
+  .cap-snap { position: absolute; top: 0; bottom: 0; width: 1px; background: #fbbf24; display: none; pointer-events: none; z-index: 3; }
+  .hint { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
   .slider-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
   .slider-row label { color: var(--muted); font-size: 14px; width: 90px; flex-shrink: 0; }
   input[type=range] { flex: 1; }
@@ -372,8 +474,27 @@
 </div>
 
 <div class="step" id="step3">
-  <h2><span class="num">3</span> Preview & auto-caption</h2>
-  <video id="clipPlayer" controls></video>
+  <h2><span class="num">3</span> Caption the clip</h2>
+  <div class="video-wrap">
+    <video id="clipPlayer"></video>
+    <div class="cap-overlay" id="capOverlay"></div>
+  </div>
+  <div class="clip-controls">
+    <button type="button" id="clipPlayBtn">▶ Play</button>
+    <span class="clip-time" id="clipTime">0.00s / 0.00s</span>
+  </div>
+
+  <div class="cap-timeline" id="capTimeline">
+    <div class="cap-lanes" id="capLanes">
+      <div class="cap-empty" id="capEmpty">No captions yet: auto-caption below, or double-click here to add one.</div>
+    </div>
+    <div class="cap-wave" id="capWave"></div>
+    <div class="cap-ruler" id="capRuler"></div>
+    <div class="cap-snap" id="capSnap"></div>
+    <div class="cap-playhead" id="capPlayhead"></div>
+  </div>
+  <p class="hint">Drag a caption to move it, or drag its edges to change when it starts and ends (hold Alt to turn off snapping). Double-click empty space to add a caption. Click a caption and press Delete to remove it, or use ← → to nudge it.</p>
+
   <div class="slider-row">
     <label>Max caption length</label>
     <input type="range" id="maxCaptionChars" min="20" max="100" step="5" value="40">
@@ -381,17 +502,13 @@
   </div>
   <button id="transcribeBtn">📝 Auto-Caption This Clip</button>
   <p class="status" id="transcribeStatus"></p>
-</div>
 
-<div class="step" id="step4">
-  <h2><span class="num">4</span> Check the captions</h2>
-  <p class="status">Fix anything Whisper misheard, drag the timing numbers if a caption is early/late, or add one Whisper missed.</p>
   <div id="captionList"></div>
-  <button type="button" class="secondary" id="addCaptionBtn">+ Add Caption</button>
+  <button type="button" class="secondary" id="addCaptionBtn">+ Add Caption at Playhead</button>
 </div>
 
 <div class="step" id="step5">
-  <h2><span class="num">5</span> Make it</h2>
+  <h2><span class="num">4</span> Make it</h2>
   <input type="text" class="name-input" id="clipName" placeholder="Name this GIF (e.g. youre-tearing-me-apart-lisa)">
   <div class="slider-row">
     <label>Caption size</label>
@@ -679,14 +796,499 @@ $('cutBtn').addEventListener('click', async () => {
   $('cutBtn').disabled = false;
   if (data.error) { $('cutStatus').textContent = 'Error: ' + data.error; return; }
 
-  $('clipPlayer').src = data.clip_url;
+  // Cache-bust: re-cutting writes to the same filenames.
+  const bust = '?t=' + Date.now();
+  $('clipPlayer').src = data.clip_url + bust;
+  $('capWave').style.backgroundImage = data.waveform_url ? `url(${data.waveform_url}${bust})` : 'none';
+  words = [];  // word timings belonged to the previous cut
+  renderWordTicks();
   $('cutStatus').textContent = '✓ Clip ready';
   done('step2');
   activate('step3');
 });
 
-// --- Step 3: Transcribe ---
+// --- Step 3: Caption the clip ---
+// `captions` is the single source of truth. The timeline blocks, the list
+// rows and the preview overlay on the video are all drawn from it.
+let captions = [];  // { id, start, end, text }, kept sorted by start
+let words = [];     // Whisper word boundaries, used as snap points
+let nextCapId = 1;
+let selectedCapId = null;
+let clipDur = 0;
+
+const CAP_COLORS = ['#5b8cff', '#f59e0b', '#4ade80', '#f472b6', '#a78bfa', '#22d3ee'];
+const LANE_H = 30;
+const MIN_CAP = 0.1;
+const SNAP_PX = 8;
+// Must match write_ass() in app.py so the preview looks like the export.
+const ASS_RES_X = 480, ASS_RES_Y = 270, ASS_OUTLINE = 3, ASS_SHADOW = 1, ASS_MARGIN = 20;
+// libass sizes DejaVu Sans by ascender+descender, which is ~1.164em.
+const ASS_FONT_EM = 1.164;
+
+const blockEls = new Map();
+const rowEls = new Map();
+
+function capById(id) { return captions.find(c => c.id === id); }
+function capColor(i) { return CAP_COLORS[i % CAP_COLORS.length]; }
+function sortCaptions() { captions.sort((a, b) => a.start - b.start || a.end - b.end); }
+function round2(t) { return Math.round(t * 100) / 100; }
+function clipPct(t) { return clipDur ? (t / clipDur) * 100 : 0; }
+
+function setCaptions(segments) {
+  captions = segments.map(seg => ({
+    id: nextCapId++, start: Number(seg.start), end: Number(seg.end), text: seg.text || ''
+  }));
+  sortCaptions();
+  selectedCapId = null;
+  renderAll();
+}
+
+function renderAll() {
+  renderList();
+  renderTrack();
+  renderOverlay(true);
+}
+
+// Overlapping captions go into extra lanes instead of drawing on top of each other.
+function assignLanes() {
+  const laneEnds = [];
+  const lanes = {};
+  [...captions].sort((a, b) => a.start - b.start).forEach(c => {
+    let lane = laneEnds.findIndex(end => end <= c.start + 1e-6);
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(c.end); }
+    else laneEnds[lane] = c.end;
+    lanes[c.id] = lane;
+  });
+  return { lanes, count: Math.max(1, laneEnds.length) };
+}
+
+// --- Timeline track ---
+function renderTrack() {
+  const lanesEl = $('capLanes');
+  const { lanes, count } = assignLanes();
+  lanesEl.style.height = (count * LANE_H + 8) + 'px';
+  $('capEmpty').style.display = captions.length ? 'none' : '';
+
+  const live = new Set();
+  captions.forEach((c, i) => {
+    live.add(c.id);
+    let el = blockEls.get(c.id);
+    if (!el) {
+      el = makeBlock(c.id);
+      blockEls.set(c.id, el);
+      lanesEl.appendChild(el);
+    }
+    el.style.left = clipPct(c.start) + '%';
+    el.style.width = Math.max(0, clipPct(c.end) - clipPct(c.start)) + '%';
+    el.style.top = (4 + lanes[c.id] * LANE_H) + 'px';
+    el.style.setProperty('--c', capColor(i));
+    el.querySelector('.cap-badge').textContent = i + 1;
+    el.querySelector('.cap-label').textContent = c.text;
+    el.title = `${i + 1}. ${c.text || '(empty)'}\n${fmt(c.start)} – ${fmt(c.end)}`;
+    el.classList.toggle('selected', c.id === selectedCapId);
+  });
+  for (const [id, el] of blockEls) {
+    if (!live.has(id)) { el.remove(); blockEls.delete(id); }
+  }
+}
+
+function makeBlock(id) {
+  const el = document.createElement('div');
+  el.className = 'cap-block';
+  el.innerHTML = '<span class="cap-edge l"></span><span class="cap-badge"></span><span class="cap-label"></span><span class="cap-edge r"></span>';
+  el.addEventListener('pointerdown', (e) => startBlockDrag(e, id));
+  el.addEventListener('dblclick', (e) => { e.stopPropagation(); focusCaptionText(id); });
+  el.addEventListener('mouseenter', () => rowEls.get(id)?.classList.add('hover'));
+  el.addEventListener('mouseleave', () => rowEls.get(id)?.classList.remove('hover'));
+  return el;
+}
+
+function renderRuler() {
+  const ruler = $('capRuler');
+  ruler.innerHTML = '';
+  if (!clipDur) return;
+  const steps = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
+  const step = steps.find(s => clipDur / s <= 10) || 60;
+  for (let i = 0; i * step <= clipDur + 1e-6; i++) {
+    const t = i * step;
+    const pct = clipPct(t);
+    const tick = document.createElement('div');
+    tick.className = 'cap-tick';
+    tick.style.left = pct + '%';
+    // Skip labels that would hang off either end of the track.
+    if (pct > 1 && pct < 96) {
+      const label = document.createElement('span');
+      label.textContent = (step < 1 ? t.toFixed(2) : t.toFixed(0)) + 's';
+      tick.appendChild(label);
+    }
+    ruler.appendChild(tick);
+  }
+}
+
+function renderWordTicks() {
+  const wave = $('capWave');
+  wave.querySelectorAll('.cap-word').forEach(el => el.remove());
+  if (!clipDur) return;
+  words.forEach(w => {
+    const tick = document.createElement('div');
+    tick.className = 'cap-word';
+    tick.style.left = clipPct(w.start) + '%';
+    wave.appendChild(tick);
+  });
+}
+
+function snapTargets(excludeId, playheadAt) {
+  const targets = [0, clipDur, playheadAt];
+  captions.forEach(c => { if (c.id !== excludeId) targets.push(c.start, c.end); });
+  words.forEach(w => targets.push(w.start, w.end));
+  return targets;
+}
+
+function nearestSnap(t, targets, tol) {
+  let best = null;
+  for (const x of targets) {
+    const dist = Math.abs(t - x);
+    if (dist <= tol && (!best || dist < best.dist)) best = { t: x, dist };
+  }
+  return best;
+}
+
+function showSnapGuide(t) {
+  const guide = $('capSnap');
+  if (t === null) { guide.style.display = 'none'; return; }
+  guide.style.left = clipPct(t) + '%';
+  guide.style.display = 'block';
+}
+
+// Dragging the middle of a block moves the whole caption, dragging an edge
+// trims its start or end. A press without movement just selects + seeks.
+function startBlockDrag(e, id) {
+  if (e.button !== 0 || !clipDur) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const c = capById(id);
+  const mode = e.target.classList.contains('l') ? 'start'
+             : e.target.classList.contains('r') ? 'end' : 'move';
+  const player = $('clipPlayer');
+  player.pause();
+  selectCaption(id);
+
+  const rect = $('capTimeline').getBoundingClientRect();
+  const secPerPx = clipDur / rect.width;
+  const tol = SNAP_PX * secPerPx;
+  const targets = snapTargets(id, player.currentTime);
+  const x0 = e.clientX, s0 = c.start, e0 = c.end, len = e0 - s0;
+  let moved = false;
+
+  const move = (ev) => {
+    const dx = ev.clientX - x0;
+    if (!moved && Math.abs(dx) < 3) return;
+    moved = true;
+    const dt = dx * secPerPx;
+    const snap = !ev.altKey;
+    let guide = null;
+
+    if (mode === 'move') {
+      let ns = s0 + dt;
+      if (snap) {
+        const a = nearestSnap(ns, targets, tol);
+        const b = nearestSnap(ns + len, targets, tol);
+        if (a && (!b || a.dist <= b.dist)) { ns = a.t; guide = a.t; }
+        else if (b) { ns = b.t - len; guide = b.t; }
+      }
+      ns = Math.min(Math.max(0, ns), Math.max(0, clipDur - len));
+      c.start = round2(ns);
+      c.end = round2(ns + len);
+      seekClip(c.start);
+    } else if (mode === 'start') {
+      let t = s0 + dt;
+      if (snap) { const a = nearestSnap(t, targets, tol); if (a) { t = a.t; guide = a.t; } }
+      c.start = round2(Math.min(Math.max(0, t), c.end - MIN_CAP));
+      seekClip(c.start);
+    } else {
+      let t = e0 + dt;
+      if (snap) { const a = nearestSnap(t, targets, tol); if (a) { t = a.t; guide = a.t; } }
+      c.end = round2(Math.max(Math.min(clipDur, t), c.start + MIN_CAP));
+      // Just before the end, so the frame shown still has this caption on it.
+      seekClip(Math.max(c.start, c.end - 0.05));
+    }
+    showSnapGuide(guide);
+    renderTrack();
+    renderList();
+  };
+  const up = () => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    showSnapGuide(null);
+    if (moved) {
+      sortCaptions();
+      renderAll();
+    } else {
+      seekClip(c.start);
+    }
+  };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+}
+
+// Pressing on empty track seeks, and dragging there scrubs.
+$('capTimeline').addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 || !clipDur || e.target.closest('.cap-block')) return;
+  const rect = $('capTimeline').getBoundingClientRect();
+  const seekAt = (ev) => seekClip(Math.min(clipDur, Math.max(0, ((ev.clientX - rect.left) / rect.width) * clipDur)));
+  seekAt(e);
+  const up = () => {
+    document.removeEventListener('pointermove', seekAt);
+    document.removeEventListener('pointerup', up);
+  };
+  document.addEventListener('pointermove', seekAt);
+  document.addEventListener('pointerup', up);
+});
+
+$('capTimeline').addEventListener('dblclick', (e) => {
+  if (!clipDur || e.target.closest('.cap-block')) return;
+  const rect = $('capTimeline').getBoundingClientRect();
+  addCaptionAt(((e.clientX - rect.left) / rect.width) * clipDur);
+});
+
+// --- Caption list ---
+function renderList() {
+  const list = $('captionList');
+  const live = new Set();
+  captions.forEach((c, i) => {
+    live.add(c.id);
+    let row = rowEls.get(c.id);
+    if (!row) { row = makeRow(c.id); rowEls.set(c.id, row); }
+    if (list.children[i] !== row) list.insertBefore(row, list.children[i] || null);
+    row.style.setProperty('--c', capColor(i));
+    row.querySelector('.cap-num').textContent = i + 1;
+    setIfIdle(row.querySelector('[data-field="start"]'), c.start.toFixed(2));
+    setIfIdle(row.querySelector('[data-field="end"]'), c.end.toFixed(2));
+    setIfIdle(row.querySelector('.cap-text'), c.text);
+    row.classList.toggle('selected', c.id === selectedCapId);
+  });
+  for (const [id, row] of rowEls) {
+    if (!live.has(id)) { row.remove(); rowEls.delete(id); }
+  }
+}
+
+// Don't overwrite a field while the user is typing in it.
+function setIfIdle(input, value) {
+  if (document.activeElement !== input && input.value !== value) input.value = value;
+}
+
+function makeRow(id) {
+  const row = document.createElement('div');
+  row.className = 'caption-row';
+  row.innerHTML = `
+    <button type="button" class="cap-num" title="Jump to this caption"></button>
+    <input type="number" class="cap-time" data-field="start" step="0.1" min="0">
+    <span class="time-sep">–</span>
+    <input type="number" class="cap-time" data-field="end" step="0.1" min="0">
+    <input type="text" class="cap-text" placeholder="Type the caption…">
+    <button type="button" class="cap-del" title="Delete this caption">✕</button>
+  `;
+  row.querySelector('.cap-num').addEventListener('click', () => {
+    selectCaption(id);
+    seekClip(capById(id).start);
+  });
+  let lenBeforeEdit = 0;
+  row.querySelectorAll('.cap-time').forEach(input => {
+    input.addEventListener('focus', () => {
+      const c = capById(id);
+      lenBeforeEdit = c.end - c.start;
+    });
+    input.addEventListener('input', () => {
+      const v = parseFloat(input.value);
+      if (isNaN(v)) return;
+      capById(id)[input.dataset.field] = v;
+      renderTrack();
+      renderOverlay(true);
+    });
+    input.addEventListener('change', () => {
+      const c = capById(id);
+      const max = clipDur || Infinity;
+      c.start = round2(Math.min(Math.max(0, c.start), max - MIN_CAP));
+      // Typing a start past the end moves the caption instead of squashing it.
+      if (input.dataset.field === 'start' && c.end <= c.start) c.end = c.start + Math.max(lenBeforeEdit, MIN_CAP);
+      c.end = round2(Math.min(Math.max(c.end, c.start + MIN_CAP), max));
+      sortCaptions();
+      renderAll();
+      const field = input.dataset.field;
+      seekClip(field === 'start' ? c.start : Math.max(c.start, c.end - 0.05));
+    });
+  });
+  row.querySelector('.cap-text').addEventListener('input', (e) => {
+    capById(id).text = e.target.value;
+    renderTrack();
+    renderOverlay(true);
+  });
+  row.querySelector('.cap-del').addEventListener('click', () => deleteCaption(id));
+  row.addEventListener('focusin', () => {
+    selectCaption(id);
+    // Show the caption on the video while editing it, unless it's playing.
+    const player = $('clipPlayer');
+    const c = capById(id);
+    if (player.paused && (player.currentTime < c.start || player.currentTime >= c.end)) seekClip(c.start);
+  });
+  row.addEventListener('mouseenter', () => blockEls.get(id)?.classList.add('hover'));
+  row.addEventListener('mouseleave', () => blockEls.get(id)?.classList.remove('hover'));
+  return row;
+}
+
+function selectCaption(id) {
+  selectedCapId = id;
+  for (const [cid, el] of blockEls) el.classList.toggle('selected', cid === id);
+  for (const [cid, row] of rowEls) row.classList.toggle('selected', cid === id);
+}
+
+function focusCaptionText(id) {
+  const input = rowEls.get(id)?.querySelector('.cap-text');
+  if (!input) return;
+  input.focus({ preventScroll: true });
+  input.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  input.select();
+}
+
+function addCaptionAt(t) {
+  const max = clipDur || Infinity;
+  const start = round2(Math.min(Math.max(0, t), Math.max(0, max - MIN_CAP)));
+  // Fill up to 2s, stopping at the next caption; if there's no room at all,
+  // overlap it (it'll get its own lane) rather than making a sliver.
+  const next = captions.filter(c => c.start > start + 1e-6).reduce((m, c) => Math.min(m, c.start), max);
+  let end = Math.min(start + 2, next);
+  if (end - start < 0.5) end = Math.min(start + 2, max);
+  end = round2(Math.max(end, start + MIN_CAP));
+
+  const c = { id: nextCapId++, start, end, text: '' };
+  captions.push(c);
+  sortCaptions();
+  selectedCapId = c.id;
+  renderAll();
+  activate('step5');
+  focusCaptionText(c.id);
+}
+
+function deleteCaption(id) {
+  captions = captions.filter(c => c.id !== id);
+  if (selectedCapId === id) selectedCapId = null;
+  renderAll();
+}
+
+$('addCaptionBtn').addEventListener('click', () => {
+  // If the playhead is sitting on a caption, add the new one right after it.
+  let t = $('clipPlayer').currentTime || 0;
+  captions.forEach(c => { if (t >= c.start && t < c.end) t = Math.max(t, c.end); });
+  addCaptionAt(t);
+});
+
+// Delete / arrow keys act on the selected caption when not typing somewhere.
+document.addEventListener('keydown', (e) => {
+  if (selectedCapId === null) return;
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'VIDEO') return;
+  const c = capById(selectedCapId);
+  if (!c) return;
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    e.preventDefault();
+    deleteCaption(c.id);
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    const step = (e.shiftKey ? 0.01 : 0.1) * (e.key === 'ArrowLeft' ? -1 : 1);
+    const len = c.end - c.start;
+    const ns = Math.min(Math.max(0, c.start + step), Math.max(0, (clipDur || Infinity) - len));
+    c.start = round2(ns);
+    c.end = round2(ns + len);
+    sortCaptions();
+    renderAll();
+    seekClip(c.start);
+  } else if (e.key === 'Escape') {
+    selectCaption(null);
+  }
+});
+
+// --- Playhead + live caption preview on the video ---
+function seekClip(t) {
+  $('clipPlayer').currentTime = t;
+  updatePlayhead();
+  renderOverlay();
+}
+
+function updatePlayhead() {
+  const t = $('clipPlayer').currentTime;
+  $('capPlayhead').style.left = clipPct(t) + '%';
+  $('clipTime').textContent = `${fmt(Math.min(t, clipDur))} / ${fmt(clipDur)}`;
+}
+
+function toggleClipPlay() {
+  const player = $('clipPlayer');
+  if (player.paused) player.play(); else player.pause();
+}
+$('clipPlayBtn').addEventListener('click', toggleClipPlay);
+$('clipPlayer').addEventListener('click', toggleClipPlay);
+$('clipPlayer').addEventListener('play', () => { $('clipPlayBtn').textContent = '⏸ Pause'; });
+['pause', 'ended'].forEach(ev => $('clipPlayer').addEventListener(ev, () => { $('clipPlayBtn').textContent = '▶ Play'; }));
+
+let overlayKey = '';
+function renderOverlay(force = false) {
+  const player = $('clipPlayer');
+  const t = player.currentTime;
+  // Earliest caption at the bottom, later overlapping ones stack above it
+  // (the same way libass stacks them when burning in).
+  const active = captions.filter(c => c.text.trim() && t >= c.start && t < c.end);
+  const key = active.map(c => c.id + ':' + c.text).join('|');
+  if (!force && key === overlayKey) return;
+  overlayKey = key;
+
+  const overlay = $('capOverlay');
+  const h = player.clientHeight, w = player.clientWidth;
+  if (!h) return;
+  const sy = h / ASS_RES_Y, sx = w / ASS_RES_X;
+  // Without ScaledBorderAndShadow, libass draws the outline/shadow in real
+  // video pixels rather than script units.
+  const bs = player.videoHeight ? h / player.videoHeight : sy;
+  const outline = ASS_OUTLINE * bs, shadow = ASS_SHADOW * bs;
+  const shadows = [];
+  for (let a = 0; a < 16; a++) {
+    const rad = (a / 16) * Math.PI * 2;
+    shadows.push(`${(Math.cos(rad) * outline).toFixed(2)}px ${(Math.sin(rad) * outline).toFixed(2)}px 0 #000`);
+  }
+  shadows.push(`${(outline + shadow).toFixed(2)}px ${(outline + shadow).toFixed(2)}px 0 #000`);
+
+  overlay.style.fontSize = ($('fontSize').value * sy / ASS_FONT_EM) + 'px';
+  overlay.style.color = $('captionColor').value;
+  overlay.style.textShadow = shadows.join(', ');
+  overlay.style.padding = `0 ${ASS_MARGIN * sx}px ${ASS_MARGIN * sy}px`;
+  overlay.innerHTML = '';
+  [...active].reverse().forEach(c => {
+    const line = document.createElement('div');
+    line.textContent = c.text;
+    overlay.appendChild(line);
+  });
+}
+
+let overlayRaf = null;
+function overlayLoop() {
+  updatePlayhead();
+  renderOverlay();
+  overlayRaf = $('clipPlayer').paused ? null : requestAnimationFrame(overlayLoop);
+}
+$('clipPlayer').addEventListener('play', () => { if (!overlayRaf) overlayRaf = requestAnimationFrame(overlayLoop); });
+['seeked', 'timeupdate', 'pause'].forEach(ev => $('clipPlayer').addEventListener(ev, () => { updatePlayhead(); renderOverlay(); }));
+$('clipPlayer').addEventListener('loadedmetadata', () => {
+  clipDur = $('clipPlayer').duration || 0;
+  renderRuler();
+  renderWordTicks();
+  renderTrack();
+  updatePlayhead();
+});
+new ResizeObserver(() => renderOverlay(true)).observe($('clipPlayer'));
+$('fontSize').addEventListener('input', () => renderOverlay(true));
+$('captionColor').addEventListener('input', () => renderOverlay(true));
+
+// --- Auto-caption ---
 $('transcribeBtn').addEventListener('click', async () => {
+  if (captions.length && !confirm('Replace your current captions with a fresh auto-caption?')) return;
   $('transcribeBtn').disabled = true;
   $('transcribeStatus').innerHTML = '<span class="spinner"></span>Listening to the clip… (first run downloads the speech model, be patient)';
   const data = await safeFetch('/api/transcribe', {
@@ -698,65 +1300,20 @@ $('transcribeBtn').addEventListener('click', async () => {
   if (data.error) { $('transcribeStatus').textContent = 'Error: ' + data.error; return; }
 
   $('transcribeStatus').textContent = '✓ Transcribed';
-  renderCaptions(data.segments);
-  done('step3');
-  activate('step4');
+  words = data.words || [];
+  renderWordTicks();
+  setCaptions(data.segments);
   activate('step5');
 });
 
-// --- Step 4: Edit captions ---
-function createCaptionRow(seg) {
-  const row = document.createElement('div');
-  row.className = 'caption-row';
-  row.innerHTML = `
-    <input type="number" class="cap-time" data-field="start" step="0.1" min="0" value="${Number(seg.start).toFixed(2)}">
-    <span class="time-sep">–</span>
-    <input type="number" class="cap-time" data-field="end" step="0.1" min="0" value="${Number(seg.end).toFixed(2)}">
-    <input type="text" class="cap-text" value="${(seg.text || '').replace(/"/g, '&quot;')}">
-    <button type="button" class="cap-del" title="Delete this caption">✕</button>
-  `;
-  row.querySelector('.cap-del').addEventListener('click', () => row.remove());
-  return row;
-}
-
-function renderCaptions(segments) {
-  const list = $('captionList');
-  list.innerHTML = '';
-  segments.forEach(seg => list.appendChild(createCaptionRow(seg)));
-}
-
-$('addCaptionBtn').addEventListener('click', () => {
-  const rows = document.querySelectorAll('#captionList .caption-row');
-  let start = 0;
-  if (rows.length) {
-    const lastEnd = parseFloat(rows[rows.length - 1].querySelector('[data-field="end"]').value) || 0;
-    start = lastEnd + 0.1;
-  } else if ($('clipPlayer').currentTime) {
-    start = $('clipPlayer').currentTime;
-  }
-  let end = start + 2;
-  const clipDur = $('clipPlayer').duration;
-  if (clipDur && !isNaN(clipDur)) end = Math.min(end, clipDur);
-  if (end <= start) end = start + 0.1;
-
-  const row = createCaptionRow({ start, end, text: '' });
-  $('captionList').appendChild(row);
-  row.querySelector('.cap-text').focus();
-});
-
-// --- Step 5: Export ---
+// --- Step 4: Export ---
 $('fontSize').addEventListener('input', () => { $('fontSizeVal').textContent = $('fontSize').value; });
 $('maxCaptionChars').addEventListener('input', () => { $('maxCaptionCharsVal').textContent = $('maxCaptionChars').value; });
 
 $('makeBtn').addEventListener('click', async () => {
-  const rows = document.querySelectorAll('#captionList .caption-row');
-  const captions = Array.from(rows)
-    .map(row => ({
-      start: parseFloat(row.querySelector('[data-field="start"]').value),
-      end: parseFloat(row.querySelector('[data-field="end"]').value),
-      text: row.querySelector('.cap-text').value
-    }))
-    .filter(c => c.text.trim() !== '' && !isNaN(c.start) && !isNaN(c.end) && c.end > c.start);
+  const exportCaptions = captions
+    .filter(c => c.text.trim() !== '' && !isNaN(c.start) && !isNaN(c.end) && c.end > c.start)
+    .map(({ start, end, text }) => ({ start, end, text }));
   const name = $('clipName').value.trim() || 'movie-quote';
   const fontsize = $('fontSize').value;
   const color = $('captionColor').value;
@@ -767,7 +1324,7 @@ $('makeBtn').addEventListener('click', async () => {
   const data = await safeFetch('/api/export', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session: sessionId, captions, name, fontsize, color, width })
+    body: JSON.stringify({ session: sessionId, captions: exportCaptions, name, fontsize, color, width })
   });
   $('makeBtn').disabled = false;
   if (data.error) { $('makeStatus').textContent = 'Error: ' + data.error; return; }
