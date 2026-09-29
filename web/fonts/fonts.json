@@ -1,0 +1,40 @@
+{
+  "default": "DejaVu Sans",
+  "fonts": [
+    {
+      "family": "DejaVu Sans",
+      "label": "Classic",
+      "file": "DejaVuSans-Bold.ttf",
+      "weight": 700,
+      "em": 1.1641
+    },
+    {
+      "family": "League Gothic",
+      "label": "Meme (tall & narrow)",
+      "file": "LeagueGothic-Regular.ttf",
+      "weight": 400,
+      "em": 1.3015
+    },
+    {
+      "family": "Liberation Sans",
+      "label": "Arial-style",
+      "file": "LiberationSans-Bold.ttf",
+      "weight": 700,
+      "em": 1.1172
+    },
+    {
+      "family": "Open Sans",
+      "label": "Open Sans",
+      "file": "OpenSans-Bold.ttf",
+      "weight": 700,
+      "em": 1.4419
+    },
+    {
+      "family": "Ubuntu",
+      "label": "Ubuntu",
+      "file": "Ubuntu-Bold.ttf",
+      "weight": 700,
+      "em": 1.121
+    }
+  ]
+}

@@ -1,3 +1,5 @@
 flask>=3.0
-openai-whisper
 yt-dlp
+# Optional: server-side captions (faster; pulls in PyTorch, ~2 GB).
+# Without it, captions are made in the browser instead.
+# openai-whisper

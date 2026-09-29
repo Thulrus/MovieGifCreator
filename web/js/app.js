@@ -1,799 +1,23 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Movie Quote GIF Maker</title>
-<style>
-  :root {
-    --bg: #14161a;
-    --panel: #1e2127;
-    --inset: #16181d;
-    --raised: #2c3038;
-    --raised-hover: #3a3d45;
-    --accent: #5b8cff;
-    --accent-hover: #7aa2ff;
-    --text: #e8e9ec;
-    --muted: #9aa0ab;
-    --border: #2c3038;
-    --good: #4ade80;
-    --warn: #fbbf24;
-    --bad: #f87171;
-  }
-  * { box-sizing: border-box; }
-  [hidden] { display: none !important; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 20px 20px 80px;
-    line-height: 1.5;
-  }
-  .page-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
-  h1 { font-size: 22px; margin: 0; }
-  .subtitle { color: var(--muted); margin: 0; font-size: 14px; }
+// The page. It works the same whichever engine is doing the work:
+//   - backend-server.js when the page is served by app.py on your own
+//     computer (native ffmpeg/Whisper, plus YouTube downloads via yt-dlp)
+//   - backend-browser.js everywhere else, e.g. GitHub Pages (everything runs
+//     in this tab; nothing is uploaded)
+// Add ?engine=browser to the URL to use the in-browser engine even when a
+// local server is available.
 
-  /* --- Steps: one open at a time, finished ones fold into a summary line --- */
-  .step {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    margin-bottom: 12px;
-  }
-  .step-head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 20px;
-    min-height: 54px;
-  }
-  .step.collapsed .step-head { cursor: pointer; }
-  .step.collapsed .step-head:hover { background: #22252c; border-radius: 14px; }
-  .step.locked { opacity: 0.45; }
-  .step-head h2 {
-    font-size: 14px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--muted);
-    margin: 0;
-    white-space: nowrap;
-  }
-  .step.open .step-head h2 { color: var(--text); }
-  .num {
-    background: var(--accent);
-    color: white;
-    width: 22px; height: 22px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: bold;
-    flex-shrink: 0;
-  }
-  .step.collapsed .num { background: var(--good); color: #0a1f14; }
-  .step.locked .num { background: var(--raised); color: var(--muted); }
-  .step-summary {
-    color: var(--text);
-    font-size: 14px;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .step:not(.collapsed) .step-summary { display: none; }
-  .step-edit { margin-left: auto; flex-shrink: 0; }
-  .step:not(.collapsed) .step-edit { display: none; }
-  .step:not(.open) .step-body { display: none; }
-  .step-body { padding: 0 20px 20px; }
+import { serverBackend } from './backend-server.js';
+import { PLAY_RES_X as ASS_RES_X, PLAY_RES_Y as ASS_RES_Y, MARGIN as ASS_MARGIN } from './captions.js';
 
-  .split { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
-  @media (max-width: 900px) { .split { grid-template-columns: minmax(0, 1fr); } }
-  .side { display: flex; flex-direction: column; gap: 14px; }
-  .card {
-    background: var(--inset);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px;
-  }
-  .card h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
-
-  video { width: 100%; border-radius: 10px; background: black; display: block; }
-  #player { max-height: 62vh; }
-
-  button {
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 10px;
-    padding: 11px 18px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  button:hover { background: var(--accent-hover); }
-  button:disabled { background: #3a3d45; color: var(--muted); cursor: not-allowed; }
-  button.secondary { background: var(--raised); color: var(--text); }
-  button.secondary:hover { background: var(--raised-hover); }
-  button.small { padding: 6px 10px; font-size: 12px; border-radius: 6px; }
-  button.link { background: none; color: var(--accent-hover); padding: 4px 8px; font-size: 13px; font-weight: 600; }
-  button.link:hover { background: var(--raised); }
-  button.block { width: 100%; }
-  kbd {
-    font-family: ui-monospace, monospace;
-    font-size: 11px;
-    background: var(--raised);
-    border: 1px solid #454a55;
-    border-bottom-width: 2px;
-    border-radius: 4px;
-    padding: 0 5px;
-    color: var(--text);
-  }
-  button kbd { background: rgba(0,0,0,0.2); border-color: rgba(255,255,255,0.2); margin-left: 6px; }
-
-  input[type=text], select {
-    background: var(--inset);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 9px 11px;
-    font-size: 15px;
-    font-family: inherit;
-  }
-  input[type=text]:focus, select:focus { outline: none; border-color: var(--accent); }
-  select { cursor: pointer; }
-  input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
-
-  /* --- Progress / status line --- */
-  .progress { margin-top: 12px; font-size: 14px; color: var(--muted); }
-  .progress .bar {
-    height: 6px;
-    background: var(--inset);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 6px;
-    position: relative;
-  }
-  .progress .bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.3s ease; }
-  .progress .bar.indeterminate span { width: 30%; position: absolute; animation: slide 1.2s ease-in-out infinite; }
-  @keyframes slide { from { left: -30%; } to { left: 100%; } }
-  .progress.error .bar, .progress.ok .bar { display: none; }
-  .progress.error { color: var(--bad); white-space: pre-wrap; }
-  .progress.ok { color: var(--good); }
-
-  /* --- Step 1: source + library --- */
-  .source-row { display: flex; gap: 10px; flex-wrap: wrap; }
-  .source-row input { flex: 1; min-width: 220px; }
-  .or { color: var(--muted); font-size: 13px; align-self: center; }
-  .drop-hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
-  #step1.dragging { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
-  .library { margin-top: 22px; }
-  .library-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-  .library-head h3 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; }
-  .library-head input { margin-left: auto; padding: 6px 10px; font-size: 13px; width: 200px; }
-  .library-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-    gap: 12px;
-    max-height: 520px;
-    overflow-y: auto;
-    padding: 2px;
-  }
-  .lib-card {
-    background: var(--inset);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-    cursor: pointer;
-    transition: border-color 0.15s ease;
-    position: relative;
-  }
-  .lib-card:hover, .lib-card:focus-visible { border-color: var(--accent); outline: none; }
-  .lib-card.current { border-color: var(--good); }
-  .lib-thumb { position: relative; aspect-ratio: 16 / 9; background: #000; }
-  .lib-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .lib-thumb .placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 26px; }
-  .lib-card.incomplete .lib-thumb img, .lib-card.working .lib-thumb img { opacity: 0.35; }
-  .lib-card.incomplete .placeholder, .lib-card.working .placeholder { display: none; }
-  .badge {
-    position: absolute;
-    font-size: 11px;
-    font-weight: 700;
-    background: rgba(0,0,0,0.75);
-    color: #fff;
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-variant-numeric: tabular-nums;
-  }
-  .badge.dur { right: 6px; bottom: 6px; }
-  .badge.gifs { left: 6px; top: 6px; background: var(--good); color: #0a1f14; }
-  .lib-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px;
-    text-align: center;
-    font-size: 12px;
-    font-weight: 600;
-  }
-  .lib-overlay .bar { width: 80%; height: 5px; background: rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden; }
-  .lib-overlay .bar span { display: block; height: 100%; background: var(--accent); }
-  .lib-overlay .warn { color: var(--warn); }
-  .lib-title {
-    font-size: 12px;
-    padding: 8px 10px;
-    line-height: 1.3;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    min-height: calc(2 * 1.3em + 16px);
-  }
-  .lib-actions {
-    position: absolute;
-    top: 6px; right: 6px;
-    display: none;
-    gap: 4px;
-  }
-  .lib-card:hover .lib-actions, .lib-card:focus-within .lib-actions { display: flex; }
-  .lib-actions button {
-    padding: 3px 7px;
-    font-size: 12px;
-    background: rgba(0,0,0,0.75);
-    border-radius: 6px;
-  }
-  .lib-actions button:hover { background: #000; }
-  .lib-actions button.del:hover { color: var(--bad); }
-  .lib-empty { color: var(--muted); font-size: 13px; }
-
-  /* --- Step 2: range picker --- */
-  .field-label { color: var(--muted); font-size: 12px; display: block; margin-bottom: 4px; }
-  .mark { margin-bottom: 14px; }
-  .mark-row { display: flex; gap: 6px; align-items: center; }
-  .time-input {
-    width: 110px;
-    font-variant-numeric: tabular-nums;
-    color: var(--good) !important;
-    font-weight: 600;
-  }
-  .nudges { display: flex; gap: 4px; margin-top: 6px; }
-  .nudges button { flex: 1; padding: 5px 0; }
-  .sel-len { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
-  .sel-len b { color: var(--text); font-variant-numeric: tabular-nums; }
-  .side .actions { display: flex; flex-direction: column; gap: 8px; }
-
-  .rbar { position: relative; user-select: none; touch-action: none; }
-  .rb-area { position: relative; height: 40px; cursor: pointer; }
-  .rb-track {
-    position: absolute;
-    top: 50%; left: 0; right: 0;
-    height: 8px;
-    transform: translateY(-50%);
-    background: var(--inset);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-  }
-  .rb-range {
-    position: absolute;
-    top: 50%;
-    height: 8px;
-    transform: translateY(-50%);
-    background: var(--accent);
-    border-radius: 4px;
-  }
-  .rb-handle {
-    position: absolute;
-    top: 50%;
-    width: 14px; height: 30px;
-    transform: translate(-50%, -50%);
-    background: #e8e9ec;
-    border: 2px solid var(--accent);
-    border-radius: 5px;
-    cursor: ew-resize;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
-    z-index: 2;
-  }
-  .rb-handle:hover, .rb-handle:active { background: var(--accent-hover); }
-  .rb-playhead {
-    position: absolute;
-    top: 2px; bottom: 2px;
-    width: 2px;
-    margin-left: -1px;
-    background: var(--good);
-    pointer-events: none;
-    z-index: 3;
-  }
-  .rb-ruler, .cap-ruler { position: relative; height: 18px; font-size: 10px; color: var(--muted); }
-  .tick { position: absolute; top: 0; width: 1px; height: 4px; background: var(--muted); }
-  .tick span { position: absolute; top: 3px; transform: translateX(-50%); white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .range-bars { margin-top: 14px; }
-  .bar-label { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
-  #zoomRow { margin-top: 10px; padding: 6px 10px 2px; background: var(--inset); border: 1px solid var(--border); border-radius: 10px; }
-  #zoomRow .rb-track { background: #101216; }
-
-  details.shortcuts { font-size: 13px; color: var(--muted); }
-  details.shortcuts summary { cursor: pointer; }
-  details.shortcuts table { border-collapse: collapse; margin-top: 8px; }
-  details.shortcuts td { padding: 2px 10px 2px 0; vertical-align: top; }
-
-  /* --- Step 3: captions --- */
-  .video-wrap { position: relative; }
-  #clipPlayer { cursor: pointer; max-height: 56vh; }
-  .clip-controls { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
-  #clipPlayBtn { width: 92px; }
-  .clip-time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-  .cap-overlay {
-    position: absolute;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    align-items: center;
-    pointer-events: none;
-    font-weight: bold;
-    text-align: center;
-    line-height: 1.17;
-  }
-  .cap-overlay div { max-width: 100%; text-wrap: balance; overflow-wrap: anywhere; }
-
-  .caption-tools {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px 16px;
-    margin-top: 16px;
-  }
-  .caption-tools label { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 8px; }
-  .caption-tools select { padding: 6px 8px; font-size: 13px; max-width: 100%; min-width: 0; }
-  .caption-tools label { flex-wrap: wrap; max-width: 100%; }
-  .caption-tools input[type=range] { width: 110px; flex: none; }
-
-  .cap-timeline {
-    position: relative;
-    margin: 14px 0 6px;
-    background: var(--inset);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-    user-select: none;
-    touch-action: none;
-    cursor: pointer;
-  }
-  .cap-lanes { position: relative; min-height: 38px; }
-  .cap-empty {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--muted);
-    font-size: 13px;
-    pointer-events: none;
-  }
-  .cap-block {
-    position: absolute;
-    height: 26px;
-    min-width: 4px;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 0 7px;
-    overflow: hidden;
-    white-space: nowrap;
-    font-size: 12px;
-    background: color-mix(in srgb, var(--c) 28%, var(--inset));
-    border: 1px solid var(--c);
-    border-radius: 5px;
-    cursor: grab;
-  }
-  .cap-block:active { cursor: grabbing; }
-  .cap-block:hover, .cap-block.hover { background: color-mix(in srgb, var(--c) 45%, var(--inset)); }
-  .cap-block.selected { box-shadow: 0 0 0 2px var(--text); z-index: 2; }
-  .cap-badge { flex-shrink: 0; font-weight: 700; color: var(--c); }
-  .cap-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-  .cap-edge { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 1; }
-  .cap-edge.l { left: 0; }
-  .cap-edge.r { right: 0; }
-  .cap-edge:hover { background: color-mix(in srgb, var(--c) 70%, transparent); }
-  .cap-wave {
-    position: relative;
-    height: 48px;
-    border-top: 1px solid var(--border);
-    background: no-repeat center / 100% 100%;
-  }
-  .cap-word { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.1); }
-  .cap-ruler { border-top: 1px solid var(--border); }
-  .cap-playhead {
-    position: absolute;
-    top: 0; bottom: 0;
-    width: 2px;
-    margin-left: -1px;
-    background: var(--good);
-    pointer-events: none;
-    z-index: 3;
-  }
-  .cap-snap { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--warn); display: none; pointer-events: none; z-index: 3; }
-  .hint { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
-
-  .caption-row {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 8px;
-    background: var(--inset);
-    padding: 8px 12px;
-    border-radius: 8px;
-    border-left: 3px solid var(--c, var(--border));
-  }
-  .caption-row.selected, .caption-row.hover { background: #1b1e24; box-shadow: inset 0 0 0 1px var(--c); }
-  .caption-row input.cap-text {
-    flex: 1;
-    min-width: 0;
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid transparent;
-    border-radius: 0;
-    color: var(--text);
-    font-size: 15px;
-    padding: 6px 4px;
-  }
-  .caption-row input.cap-text:focus { outline: none; border-bottom-color: var(--accent); }
-  .caption-row input.cap-time {
-    width: 56px;
-    flex-shrink: 0;
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid transparent;
-    color: var(--muted);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    padding: 6px 2px;
-    text-align: right;
-  }
-  .caption-row input.cap-time:focus { outline: none; border-bottom: 1px solid var(--accent); color: var(--text); }
-  .caption-row .time-sep { color: var(--muted); font-size: 12px; flex-shrink: 0; }
-  .caption-row .cap-del {
-    flex-shrink: 0;
-    background: transparent;
-    color: var(--muted);
-    padding: 4px 6px;
-    font-size: 14px;
-    line-height: 1;
-  }
-  .caption-row .cap-del:hover { color: var(--text); background: var(--raised); border-radius: 6px; }
-  .caption-row .cap-num {
-    flex-shrink: 0;
-    width: 24px; height: 24px;
-    padding: 0;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--c) 25%, var(--inset));
-    border: 1px solid var(--c);
-    color: var(--c);
-    font-size: 12px;
-    font-weight: 700;
-  }
-  .caption-row .cap-num:hover { background: color-mix(in srgb, var(--c) 45%, var(--inset)); }
-
-  .control { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-  .control:last-child { margin-bottom: 0; }
-  .control > label:first-child { color: var(--muted); font-size: 13px; width: 70px; flex-shrink: 0; }
-  .control select, .control input[type=text] { flex: 1; min-width: 0; padding: 7px 9px; font-size: 14px; }
-  .control .val { color: var(--text); font-size: 13px; width: 24px; text-align: right; font-variant-numeric: tabular-nums; }
-  input[type=color] {
-    width: 48px;
-    height: 32px;
-    padding: 2px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--inset);
-    cursor: pointer;
-  }
-  .swatches { display: flex; gap: 6px; }
-  .swatches button { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid var(--border); }
-  .seg { display: flex; flex: 1; background: var(--bg); border-radius: 8px; padding: 2px; }
-  .seg button { flex: 1; background: none; color: var(--muted); padding: 5px 0; font-size: 13px; border-radius: 6px; }
-  .seg button.active { background: var(--raised-hover); color: var(--text); }
-  .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
-  .check input { accent-color: var(--accent); width: 16px; height: 16px; }
-
-  /* --- Results --- */
-  .results-body { padding: 0 20px 20px; }
-  @media (max-width: 600px) {
-    body { padding: 14px 10px 60px; }
-    .step-head { padding: 12px 14px; flex-wrap: wrap; row-gap: 2px; }
-    .step-body, .results-body { padding: 0 14px 14px; }
-    .step-head h2 { white-space: normal; }
-    .library-head { flex-wrap: wrap; }
-    .library-head input { margin-left: 0; width: 100%; }
-    .library-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
-  }
-  .latest { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: start; }
-  @media (max-width: 900px) { .latest { grid-template-columns: minmax(0, 1fr); } }
-  /* Shown at its real size, so what you see is what gets sent. */
-  .latest-frame { background: #000; border-radius: 10px; display: flex; justify-content: center; align-items: center; min-height: 160px; }
-  .latest img { max-width: 100%; display: block; }
-  .latest h3 { margin: 0 0 4px; font-size: 16px; word-break: break-all; }
-  .sizes { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
-  .size-warn { color: var(--warn); font-size: 13px; margin: 0 0 12px; }
-  .download-links { display: flex; flex-direction: column; gap: 8px; }
-  .download-links a {
-    text-align: center;
-    background: var(--good);
-    color: #0a1f14;
-    padding: 11px;
-    border-radius: 10px;
-    text-decoration: none;
-    font-weight: 700;
-  }
-  .download-links a.alt { background: var(--raised); color: var(--text); }
-  .after-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-  .older h4 { color: var(--muted); font-size: 13px; font-weight: 600; margin: 22px 0 10px; }
-  .older-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-  .older-card { background: var(--inset); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-size: 12px; }
-  .older-card img { width: 100%; display: block; aspect-ratio: 16 / 9; object-fit: cover; background: #000; }
-  .older-card .meta { padding: 6px 8px; }
-  .older-card .meta b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .older-card .meta a { color: var(--accent-hover); margin-right: 8px; text-decoration: none; }
-  #downloadSourceLink { color: var(--muted); font-size: 12px; text-decoration: none; }
-  #downloadSourceLink:hover { color: var(--text); }
-</style>
-</head>
-<body>
-
-<div class="page-head">
-  <h1>🎬 Movie Quote GIF Maker</h1>
-  <p class="subtitle">Grab a video, mark the quote, caption it, and get a GIF ready to text.</p>
-</div>
-
-<section class="step open" id="step1" data-step="1">
-  <header class="step-head">
-    <span class="num">1</span><h2>Get a video</h2>
-    <span class="step-summary" id="sum1"></span>
-    <button type="button" class="link step-edit">Change video</button>
-  </header>
-  <div class="step-body">
-    <div class="source-row">
-      <input type="text" id="youtubeUrl" placeholder="Paste a YouTube link…" autocomplete="off">
-      <button type="button" id="fetchBtn">⬇ Fetch</button>
-      <span class="or">or</span>
-      <button type="button" class="secondary" id="uploadBtn">📁 Upload a file</button>
-      <input type="file" id="fileInput" accept="video/*,.mkv,.vob,.ts,.m2ts" hidden>
-    </div>
-    <p class="drop-hint">You can also drop a video file anywhere on this box.</p>
-    <div class="progress" id="srcProgress" hidden><div class="bar"><span></span></div><div class="msg"></div></div>
-
-    <div class="library" id="library" hidden>
-      <div class="library-head">
-        <h3>Your library (<span id="libCount">0</span>) — click one to reuse it</h3>
-        <input type="text" id="libFilter" placeholder="Filter…" hidden>
-      </div>
-      <div class="library-grid" id="libraryGrid"></div>
-    </div>
-  </div>
-</section>
-
-<section class="step locked" id="step2" data-step="2">
-  <header class="step-head">
-    <span class="num">2</span><h2>Pick the part you want</h2>
-    <span class="step-summary" id="sum2"></span>
-    <button type="button" class="link step-edit">Change range</button>
-  </header>
-  <div class="step-body">
-    <div class="split">
-      <div>
-        <video id="player" controls preload="auto"></video>
-      </div>
-      <div class="side">
-        <div class="card">
-          <div class="mark">
-            <label class="field-label" for="startInput">Start</label>
-            <div class="mark-row">
-              <input type="text" class="time-input" id="startInput" autocomplete="off">
-              <button type="button" class="secondary small" id="markStartBtn" title="Set the start to where the video is now">⤓ Now <kbd>I</kbd></button>
-            </div>
-            <div class="nudges">
-              <button type="button" class="secondary small nudge" data-target="start" data-delta="-1">−1s</button>
-              <button type="button" class="secondary small nudge" data-target="start" data-delta="-0.1">−0.1</button>
-              <button type="button" class="secondary small nudge" data-target="start" data-delta="0.1">+0.1</button>
-              <button type="button" class="secondary small nudge" data-target="start" data-delta="1">+1s</button>
-            </div>
-          </div>
-          <div class="mark">
-            <label class="field-label" for="endInput">End</label>
-            <div class="mark-row">
-              <input type="text" class="time-input" id="endInput" autocomplete="off">
-              <button type="button" class="secondary small" id="markEndBtn" title="Set the end to where the video is now">⤓ Now <kbd>O</kbd></button>
-            </div>
-            <div class="nudges">
-              <button type="button" class="secondary small nudge" data-target="end" data-delta="-1">−1s</button>
-              <button type="button" class="secondary small nudge" data-target="end" data-delta="-0.1">−0.1</button>
-              <button type="button" class="secondary small nudge" data-target="end" data-delta="0.1">+0.1</button>
-              <button type="button" class="secondary small nudge" data-target="end" data-delta="1">+1s</button>
-            </div>
-          </div>
-          <p class="sel-len">Selection length: <b id="selLen">0.00s</b></p>
-          <div class="actions">
-            <button type="button" class="secondary" id="previewSelBtn">▶ Preview selection <kbd>P</kbd></button>
-            <button type="button" id="cutBtn">Cut clip &amp; continue →</button>
-          </div>
-          <div class="progress" id="cutProgress" hidden><div class="bar"><span></span></div><div class="msg"></div></div>
-        </div>
-        <details class="shortcuts">
-          <summary>Keyboard shortcuts</summary>
-          <table>
-            <tr><td><kbd>Space</kbd></td><td>Play / pause</td></tr>
-            <tr><td><kbd>I</kbd> <kbd>O</kbd></td><td>Set start / end at the playhead</td></tr>
-            <tr><td><kbd>P</kbd></td><td>Loop-preview the selection</td></tr>
-            <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>Step back / forward one frame</td></tr>
-            <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Jump 1s (hold <kbd>Shift</kbd> for 5s)</td></tr>
-            <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Jump to start / end of the selection</td></tr>
-            <tr><td><kbd>Enter</kbd></td><td>Cut &amp; continue</td></tr>
-          </table>
-        </details>
-        <a id="downloadSourceLink" download hidden>⬇ Download the original video file</a>
-      </div>
-    </div>
-
-    <div class="range-bars">
-      <div id="rangeMain"></div>
-      <p class="bar-label">Whole video — drag the handles to pick your clip, click anywhere to jump there.</p>
-      <div id="zoomRow" hidden>
-        <div id="rangeZoom"></div>
-        <p class="bar-label">🔍 Zoomed in around your selection, for fine-tuning.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="step locked" id="step3" data-step="3">
-  <header class="step-head">
-    <span class="num">3</span><h2>Caption &amp; export</h2>
-    <span class="step-summary" id="sum3"></span>
-    <button type="button" class="link step-edit">Edit captions</button>
-  </header>
-  <div class="step-body">
-    <div class="split">
-      <div>
-        <div class="video-wrap">
-          <video id="clipPlayer" preload="auto"></video>
-          <div class="cap-overlay" id="capOverlay"></div>
-        </div>
-        <div class="clip-controls">
-          <button type="button" class="secondary small" id="clipPlayBtn">▶ Play</button>
-          <span class="clip-time" id="clipTime">0.00s / 0.00s</span>
-        </div>
-      </div>
-      <div class="side">
-        <div class="card">
-          <h3>Caption style</h3>
-          <div class="control">
-            <label for="fontSel">Font</label>
-            <select id="fontSel"></select>
-          </div>
-          <div class="control">
-            <label for="fontSize">Size</label>
-            <input type="range" id="fontSize" min="14" max="72" value="32">
-            <span class="val" id="fontSizeVal">32</span>
-          </div>
-          <div class="control">
-            <label for="captionColor">Color</label>
-            <input type="color" id="captionColor" value="#ffffff">
-            <div class="swatches" id="swatches"></div>
-          </div>
-          <div class="control">
-            <label for="outline">Outline</label>
-            <input type="range" id="outline" min="0" max="6" value="3">
-            <span class="val" id="outlineVal">3</span>
-          </div>
-          <div class="control">
-            <label>Position</label>
-            <div class="seg"><button type="button" id="posTop">Top</button><button type="button" id="posBottom" class="active">Bottom</button></div>
-          </div>
-          <div class="control">
-            <label></label>
-            <label class="check"><input type="checkbox" id="uppercase"> ALL CAPS</label>
-          </div>
-        </div>
-        <div class="card">
-          <h3>Export</h3>
-          <div class="control">
-            <label for="clipName">Name</label>
-            <input type="text" id="clipName" autocomplete="off">
-          </div>
-          <div class="control">
-            <label for="outputWidth">Width</label>
-            <select id="outputWidth">
-              <option value="640">640px (sharpest, big file)</option>
-              <option value="480">480px (high quality)</option>
-              <option value="360" selected>360px (balanced)</option>
-              <option value="240">240px (smallest file)</option>
-            </select>
-          </div>
-          <div class="control">
-            <label for="outputFps">Smoothness</label>
-            <select id="outputFps">
-              <option value="24">24 fps (smoothest)</option>
-              <option value="20">20 fps</option>
-              <option value="15" selected>15 fps (balanced)</option>
-              <option value="12">12 fps</option>
-              <option value="10">10 fps (smallest file)</option>
-            </select>
-          </div>
-          <button type="button" class="block" id="makeBtn">🎉 Make GIF</button>
-          <div class="progress" id="makeProgress" hidden><div class="bar"><span></span></div><div class="msg"></div></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="caption-tools">
-      <button type="button" id="transcribeBtn">📝 Auto-caption</button>
-      <label>Speech model <select id="modelSel"></select></label>
-      <label>Max caption length <input type="range" id="maxCaptionChars" min="20" max="100" step="5" value="40"> <span id="maxCaptionCharsVal">40</span></label>
-    </div>
-    <div class="progress" id="transcribeProgress" hidden><div class="bar"><span></span></div><div class="msg"></div></div>
-
-    <div class="cap-timeline" id="capTimeline">
-      <div class="cap-lanes" id="capLanes">
-        <div class="cap-empty" id="capEmpty">No captions yet: use Auto-caption above, or double-click here to add one.</div>
-      </div>
-      <div class="cap-wave" id="capWave"></div>
-      <div class="cap-ruler" id="capRuler"></div>
-      <div class="cap-snap" id="capSnap"></div>
-      <div class="cap-playhead" id="capPlayhead"></div>
-    </div>
-    <p class="hint">Drag a caption to move it, or drag its edges to change when it starts and ends (hold Alt to turn off snapping). Double-click empty space or press <kbd>N</kbd> to add a caption. Click a caption, then <kbd>Delete</kbd> removes it and <kbd>←</kbd> <kbd>→</kbd> nudge it. <kbd>Space</kbd> plays, <kbd>,</kbd> <kbd>.</kbd> step one frame.</p>
-
-    <div id="captionList"></div>
-    <button type="button" class="secondary" id="addCaptionBtn">+ Add caption at playhead</button>
-  </div>
-</section>
-
-<section class="step" id="results" hidden>
-  <header class="step-head">
-    <span class="num">✓</span><h2>Your GIFs from this video</h2>
-  </header>
-  <div class="results-body">
-    <div class="latest">
-      <div class="latest-frame"><img id="latestGif" alt="Your captioned GIF" draggable="true"></div>
-      <div>
-        <h3 id="latestName"></h3>
-        <p class="sizes" id="latestSizes"></p>
-        <p class="size-warn" id="latestWarn" hidden></p>
-        <div class="download-links">
-          <a id="downloadGif" download>⬇ Download GIF</a>
-          <a id="downloadMp4" class="alt" download>⬇ Download MP4 (smaller — send this if you can)</a>
-        </div>
-        <p class="hint" style="margin-top:10px">Tip: you can drag the GIF straight from here into a chat or email.</p>
-        <div class="after-actions">
-          <button type="button" class="secondary small" id="anotherRangeBtn">✂️ Another clip from this video</button>
-          <button type="button" class="secondary small" id="newVideoBtn">🎬 A different video</button>
-        </div>
-      </div>
-    </div>
-    <div class="older" id="olderWrap" hidden>
-      <h4>Earlier GIFs from this video</h4>
-      <div class="older-grid" id="olderGrid"></div>
-    </div>
-  </div>
-</section>
-
-<script>
 const $ = id => document.getElementById(id);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-let cfg = { fonts: [], models: [], default_font: 'DejaVu Sans', default_model: 'small' };
+let backend = null;
+let cfg = { fonts: [], models: [], languages: [['en', 'English']], default_font: 'DejaVu Sans', default_model: 'base', default_language: 'en' };
 let sessionId = null, session = null;
 let duration = 0, fps = 30;
 let startTime = 0, endTime = 0;
-let clipRange = null;  // the {start, end} of the source video that clip.mp4 covers
+let clipRange = null;  // the {start, end} of the source video that the current clip covers
 let restoring = false;
 
 // --- Formatting ---
@@ -819,6 +43,7 @@ function parseTime(str) {
 }
 function fmtSize(bytes) {
   if (bytes == null) return '?';
+  if (bytes >= 1024 ** 3) return (bytes / 1024 ** 3).toFixed(1) + ' GB';
   return bytes < 1024 * 1024 ? Math.round(bytes / 1024) + ' KB' : (bytes / 1048576).toFixed(1) + ' MB';
 }
 function slugify(s) {
@@ -831,70 +56,7 @@ function el(tag, className, text) {
   return e;
 }
 
-// --- Server calls ---
-// Wraps fetch so a dropped connection (e.g. the dev server restarting
-// mid-request) shows up as a clear error instead of a stuck spinner.
-async function safeFetch(url, opts) {
-  let res;
-  try {
-    res = await fetch(url, opts);
-  } catch (err) {
-    return { error: 'Lost connection to the server. Is it still running? Try again.' };
-  }
-  let data;
-  try {
-    data = await res.json();
-  } catch (err) {
-    return { error: `Server error (${res.status})` };
-  }
-  if (!res.ok && !data.error) data.error = `Server error (${res.status})`;
-  return data;
-}
-
-function api(url, { method, json } = {}) {
-  const opts = { method: method || (json !== undefined ? 'POST' : 'GET') };
-  if (json !== undefined) {
-    opts.headers = { 'Content-Type': 'application/json' };
-    opts.body = JSON.stringify(json);
-  }
-  return safeFetch(url, opts);
-}
-
-// Slow work runs as a server-side job; poll it until it finishes. Brief
-// connection blips are retried rather than treated as failure.
-async function waitJob(id, onUpdate) {
-  let misses = 0;
-  for (;;) {
-    let res, job;
-    try {
-      res = await fetch(`/api/jobs/${id}`);
-      job = await res.json();
-    } catch (err) {
-      if (++misses > 30) return { error: 'Lost connection to the server. Is it still running?' };
-      await sleep(1000);
-      continue;
-    }
-    misses = 0;
-    if (!res.ok) return { error: job.error || `Server error (${res.status})` };
-    if (onUpdate) onUpdate(job);
-    if (job.status === 'done') return job.result || {};
-    if (job.status === 'error') return { error: job.error };
-    await sleep(400);
-  }
-}
-
-// Start a job and follow it with a progress element. Returns the job's result
-// (or the start response itself if it didn't start a job, e.g. an error).
-async function runJob(url, body, progressEl) {
-  showProgress(progressEl, { message: 'Starting…', progress: null });
-  const start = await api(url, { json: body });
-  if (start.error || !start.job) {
-    if (!start.error) showProgress(progressEl, null);
-    return start;
-  }
-  return waitJob(start.job, j => showProgress(progressEl, j));
-}
-
+// --- Progress / status lines ---
 function showProgress(elm, job) {
   if (!job) { elm.hidden = true; return; }
   elm.hidden = false;
@@ -910,6 +72,25 @@ function showStatus(elm, text, kind) {
   elm.classList.toggle('ok', kind === 'ok');
   elm.querySelector('.msg').textContent = text;
 }
+// Progress updates for a line, keeping the last message when an update only moves the bar.
+function progressTo(elm) {
+  let last = '';
+  return job => {
+    if (job.message) last = job.message;
+    showProgress(elm, { ...job, message: job.message || last });
+  };
+}
+
+// Stop the page being closed mid-job in browser mode, where closing the tab
+// really does stop the work.
+let busy = 0;
+async function working(fn) {
+  busy++;
+  try { return await fn(); } finally { busy--; }
+}
+window.addEventListener('beforeunload', e => {
+  if (busy && backend && backend.mode === 'browser') { e.preventDefault(); e.returnValue = ''; }
+});
 
 // --- Steps (accordion: one open, finished ones collapse to a summary) ---
 let reached = 1, openN = 1;
@@ -934,11 +115,27 @@ function renderSteps() {
   });
   // The results panel belongs to the open video; hide it while picking another.
   $('results').hidden = !exportList.length || openN === 1;
+  // The how-it-works strip is for people who haven't started yet.
+  $('howto').hidden = !!sessionId || libEntries.length > 0;
   $('sum1').textContent = session ? session.title : '';
   $('sum2').textContent = session
     ? `${fmtTime(startTime)} – ${fmtTime(endTime)}  (${(endTime - startTime).toFixed(1)}s)` : '';
   const n = captions.filter(c => c.text.trim()).length;
   $('sum3').textContent = clipRange ? `${n} caption${n === 1 ? '' : 's'}` : '';
+  renderMiniSteps();
+}
+
+// The "1 add captions, 2 check, 3 make" guide at the top of step 3 ticks itself off.
+function renderMiniSteps() {
+  const hasCaps = captions.some(c => c.text.trim());
+  const made = exportList.length > 0;
+  const state = [hasCaps || made, hasCaps && made, made];
+  const now = state.indexOf(false);
+  ['ms1', 'ms2', 'ms3'].forEach((id, i) => {
+    $(id).classList.toggle('done', state[i]);
+    $(id).classList.toggle('now', i === now);
+  });
+  $('transcribeBtn').classList.toggle('pulse', !hasCaps && openN === 3 && !$('transcribeBtn').disabled);
 }
 
 document.querySelectorAll('.step-head').forEach(head => {
@@ -950,8 +147,8 @@ document.querySelectorAll('.step-head').forEach(head => {
   });
 });
 
-// --- Autosave: range, captions and style are saved with the session so
-// nothing is lost on refresh, and reopening from the library picks up
+// --- Autosave: range, captions and style are saved with the video so
+// nothing is lost on refresh, and reopening it from the library picks up
 // where you left off. ---
 let saveTimer = null;
 
@@ -966,6 +163,7 @@ function collectState() {
     name: $('clipName').value,
     maxChars: Number($('maxCaptionChars').value),
     model: $('modelSel').value,
+    language: $('langSel').value,
   };
 }
 function scheduleSave() {
@@ -977,12 +175,12 @@ function saveNow() {
   if (!saveTimer || !sessionId) return;
   clearTimeout(saveTimer);
   saveTimer = null;
-  api(`/api/sessions/${sessionId}/state`, { method: 'PUT', json: collectState() });
+  backend.saveState(sessionId, collectState());
 }
 window.addEventListener('pagehide', () => {
   if (!saveTimer || !sessionId) return;
-  navigator.sendBeacon(`/api/sessions/${sessionId}/state`,
-    new Blob([JSON.stringify(collectState())], { type: 'application/json' }));
+  if (backend.flushState) backend.flushState(sessionId, collectState());
+  else saveNow();
 });
 
 function remember(key, value) {
@@ -995,20 +193,12 @@ function recall(key) {
 // --- Step 1: getting a video ---
 const srcProgress = $('srcProgress');
 
-// Follows whatever a fetch/upload/resume call started, then opens the video.
-async function followSourceJob(start) {
-  if (start.error) { showStatus(srcProgress, 'Error: ' + start.error, 'error'); return; }
-  if (start.existing) {
-    showStatus(srcProgress, '✓ You already had this video, so it was opened from your library instead of downloading it again.', 'ok');
-    await openSession(start.session);
-    return;
-  }
-  loadLibrary();
-  const result = await waitJob(start.job, j => showProgress(srcProgress, j));
+// Opens whatever an upload/fetch/resume produced.
+async function openResult(result) {
   loadLibrary();
   if (result.error) { showStatus(srcProgress, 'Error: ' + result.error, 'error'); return; }
   if (result.existing) {
-    showStatus(srcProgress, '✓ You already had this video, so it was opened from your library instead of downloading it again.', 'ok');
+    showStatus(srcProgress, '✓ You already had this video, so it was opened from your list instead of downloading it again.', 'ok');
   } else {
     showProgress(srcProgress, null);
   }
@@ -1020,66 +210,81 @@ async function fetchYoutube() {
   if (!url) { $('youtubeUrl').focus(); return; }
   $('fetchBtn').disabled = true;
   showProgress(srcProgress, { message: 'Looking up the video…', progress: null });
-  const start = await api('/api/fetch-youtube', { json: { url } });
-  await followSourceJob(start);
+  setTimeout(loadLibrary, 1500);  // show the new download's card while it runs
+  const result = await backend.fetchYoutube(url, progressTo(srcProgress));
   $('fetchBtn').disabled = false;
-  if (!start.error) $('youtubeUrl').value = '';
+  if (!result.error) $('youtubeUrl').value = '';
+  await openResult(result);
 }
 $('fetchBtn').addEventListener('click', fetchYoutube);
 $('youtubeUrl').addEventListener('keydown', e => { if (e.key === 'Enter') fetchYoutube(); });
 
-function uploadFile(file) {
-  if (!file) return;
-  showProgress(srcProgress, { message: `Uploading ${file.name}…`, progress: 0 });
-  const form = new FormData();
-  form.append('video', file);
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/upload');
-  xhr.upload.onprogress = e => {
-    if (e.lengthComputable) {
-      showProgress(srcProgress, { message: `Uploading ${file.name}… ${Math.round(100 * e.loaded / e.total)}%`, progress: e.loaded / e.total });
-    }
-  };
-  xhr.onload = () => {
-    let data;
-    try { data = JSON.parse(xhr.responseText); } catch (err) { data = { error: `Server error (${xhr.status})` }; }
-    followSourceJob(data);
-  };
-  xhr.onerror = () => showStatus(srcProgress, 'Error: lost connection to the server while uploading.', 'error');
-  xhr.send(form);
+function looksLikeVideo(file) {
+  return file.type.startsWith('video/') || /\.(mp4|m4v|mov|mkv|webm|avi|wmv|flv|mpe?g|ts|m2ts|mts|vob|3gp|ogv)$/i.test(file.name);
 }
-$('uploadBtn').addEventListener('click', () => $('fileInput').click());
-$('fileInput').addEventListener('change', e => { uploadFile(e.target.files[0]); e.target.value = ''; });
 
-// Drag & drop a file onto step 1.
-['dragenter', 'dragover'].forEach(ev => $('step1').addEventListener(ev, e => {
-  if (![...e.dataTransfer.types].includes('Files')) return;
-  e.preventDefault();
+async function addFile(file) {
+  if (!file) return;
+  if (!looksLikeVideo(file)
+      && !confirm(`"${file.name}" doesn’t look like a video file. Try it anyway?`)) return;
   if (openN !== 1) openStep(1);
-  $('step1').classList.add('dragging');
-}));
-['dragleave', 'drop'].forEach(ev => $('step1').addEventListener(ev, e => {
-  if (ev === 'dragleave' && $('step1').contains(e.relatedTarget)) return;
-  $('step1').classList.remove('dragging');
-}));
-$('step1').addEventListener('drop', e => {
+  const result = await working(() => backend.addFile(file, progressTo(srcProgress)));
+  await openResult(result);
+}
+$('uploadBtn').addEventListener('click', e => { e.stopPropagation(); $('fileInput').click(); });
+$('dropzone').addEventListener('click', () => $('fileInput').click());
+$('dropzone').addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('fileInput').click(); }
+});
+$('fileInput').addEventListener('change', e => { addFile(e.target.files[0]); e.target.value = ''; });
+
+// Drop a video anywhere on the page.
+let dragDepth = 0;
+window.addEventListener('dragenter', e => {
+  if (![...e.dataTransfer.types].includes('Files')) return;
+  dragDepth++;
+  document.body.classList.add('dragging');
+});
+window.addEventListener('dragleave', () => {
+  if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); }
+});
+window.addEventListener('dragover', e => {
+  if ([...e.dataTransfer.types].includes('Files')) e.preventDefault();
+});
+window.addEventListener('drop', e => {
+  dragDepth = 0;
+  document.body.classList.remove('dragging');
   if (!e.dataTransfer.files.length) return;
   e.preventDefault();
-  uploadFile(e.dataTransfer.files[0]);
+  const file = e.dataTransfer.files[0];
+  // Dropped on step 2's "choose the file again" banner: relink instead.
+  if (e.target.closest && e.target.closest('#relinkBanner')) relinkFile(file);
+  else addFile(file);
 });
 
-// --- Library of previously fetched/uploaded videos ---
+// --- Library of videos you've used before ---
 let libEntries = [];
 let libTimer = null;
 
 async function loadLibrary() {
   clearTimeout(libTimer);
-  const data = await api('/api/library');
+  const data = await backend.library();
   if (data.error) return;
   libEntries = data.sessions || [];
   renderLibrary();
+  renderSteps();
   // Keep in-progress downloads' cards updating.
   if (libEntries.some(e => e.status === 'working')) libTimer = setTimeout(loadLibrary, 1500);
+  renderStorage();
+}
+
+async function renderStorage() {
+  const u = backend.usage ? await backend.usage() : null;
+  $('storageNote').hidden = !u;
+  if (!u) return;
+  $('storageNote').textContent = `Saved in this browser only · using ${fmtSize(u.used)}`
+    + (u.quota ? ` of the ${fmtSize(u.quota)} it allows` : '')
+    + '. Download the GIFs you want to keep.';
 }
 
 function renderLibrary() {
@@ -1129,7 +334,7 @@ function libraryCard(e) {
       ov.appendChild(el('div', '', 'You also have a finished copy of this one.'));
     }
     if (e.resume) {
-      const btn = el('button', 'small', '↻ Resume');
+      const btn = el('button', 'small', '↻ Finish it');
       btn.addEventListener('click', ev => { ev.stopPropagation(); resumeEntry(e); });
       ov.appendChild(btn);
     }
@@ -1143,16 +348,20 @@ function libraryCard(e) {
   const actions = el('div', 'lib-actions');
   const rename = el('button', '', '✎');
   rename.title = 'Rename';
+  rename.setAttribute('aria-label', 'Rename');
   rename.addEventListener('click', ev => { ev.stopPropagation(); renameEntry(e); });
   const del = el('button', 'del', '🗑');
   del.title = 'Delete';
+  del.setAttribute('aria-label', 'Delete');
   del.addEventListener('click', ev => { ev.stopPropagation(); deleteEntry(e); });
   actions.append(rename, del);
   card.appendChild(actions);
 
   const activate = () => {
     if (e.status === 'ready') openSession(e.session);
-    else if (e.status === 'working' && e.job) followSourceJob({ job: e.job.id });
+    else if (e.status === 'working' && e.job && backend.follow) {
+      working(() => backend.follow(e, progressTo(srcProgress))).then(openResult);
+    }
     else resumeEntry(e);
   };
   card.addEventListener('click', activate);
@@ -1161,23 +370,23 @@ function libraryCard(e) {
 }
 
 async function resumeEntry(e) {
-  const body = {};
+  let url = null;
   if (e.resume === 'needs_url') {
-    const url = prompt(`"${e.title}" stopped downloading partway, and this older entry doesn't remember which link it came from.\n\nPaste the YouTube link to finish the download (it picks up where it left off):`);
+    url = prompt(`"${e.title}" stopped downloading partway, and this older entry doesn't remember which link it came from.\n\nPaste the YouTube link to finish the download (it picks up where it left off):`);
     if (!url) return;
-    body.url = url.trim();
+    url = url.trim();
   } else if (!e.resume) {
-    alert(`"${e.title}" can't be resumed: its original file is missing. You can delete it from the library.`);
+    alert(`"${e.title}" can't be finished: its original file is missing. You can delete it from your list.`);
     return;
   }
-  showProgress(srcProgress, { message: 'Resuming…', progress: null });
-  await followSourceJob(await api(`/api/sessions/${e.session}/resume`, { json: body }));
+  showProgress(srcProgress, { message: 'Picking up where it left off…', progress: null });
+  await openResult(await working(() => backend.resume(e, url, progressTo(srcProgress))));
 }
 
 async function renameEntry(e) {
   const title = prompt('Rename this video:', e.title);
   if (!title || !title.trim() || title.trim() === e.title) return;
-  const res = await api(`/api/sessions/${e.session}`, { method: 'PATCH', json: { title: title.trim() } });
+  const res = await backend.rename(e.session, title.trim());
   if (res.error) { alert(res.error); return; }
   if (e.session === sessionId) { session.title = res.title; renderSteps(); }
   loadLibrary();
@@ -1185,19 +394,22 @@ async function renameEntry(e) {
 
 async function deleteEntry(e) {
   const gifs = e.export_count ? ` and the ${e.export_count} GIF${e.export_count === 1 ? '' : 's'} made from it` : '';
-  if (!confirm(`Delete "${e.title}"${gifs}?\n\nThis removes the downloaded video from your library for good — you'd have to download it again to reuse it.`)) return;
-  const res = await api(`/api/sessions/${e.session}`, { method: 'DELETE' });
+  const what = backend.mode === 'browser'
+    ? 'This removes the video from this browser for good — you’d have to add the file again to reuse it.'
+    : 'This removes the downloaded video from your list for good — you’d have to download it again to reuse it.';
+  if (!confirm(`Delete "${e.title}"${gifs}?\n\n${what}`)) return;
+  const res = await backend.remove(e.session);
   if (res.error) { alert(res.error); return; }
   if (e.session === sessionId) closeSession();
   loadLibrary();
 }
 
-// --- Opening a session (restores everything saved for it) ---
+// --- Opening a video (restores everything saved for it) ---
 async function openSession(sid) {
-  const info = await api(`/api/sessions/${sid}`);
+  const info = await backend.open(sid);
   if (info.error) { showStatus(srcProgress, 'Error: ' + info.error, 'error'); return; }
   if (info.status !== 'ready') { showStatus(srcProgress, 'That video isn’t ready yet.', 'error'); return; }
-  saveNow();  // flush pending edits to the previous session first
+  saveNow();  // flush pending edits to the previous video first
   restoring = true;
 
   sessionId = sid;
@@ -1205,11 +417,13 @@ async function openSession(sid) {
   const st = info.state || {};
   duration = info.duration || 0;
   fps = info.fps || 30;
-  const range = st.range || info.clip || { start: 0, end: duration };
+  const range = st.range || info.clip || defaultRange();
   startTime = range.start;
   endTime = range.end;
   previewLooping = false;
-  $('player').src = info.video_url;
+  if (info.video_url) $('player').src = info.video_url;
+  else { $('player').removeAttribute('src'); $('player').load(); }
+  setNeedsSource(!!info.needs_source, info.source_name);
   $('downloadSourceLink').hidden = !info.download_url;
   if (info.download_url) $('downloadSourceLink').href = info.download_url;
 
@@ -1218,9 +432,11 @@ async function openSession(sid) {
   $('clipName').value = st.name || '';
   if (st.maxChars) { $('maxCaptionChars').value = st.maxChars; $('maxCaptionCharsVal').textContent = st.maxChars; }
   if (st.model && cfg.models.some(m => m.name === st.model)) $('modelSel').value = st.model;
+  $('langSel').value = [st.language, recall('language').code, cfg.default_language]
+    .find(code => code && cfg.languages.some(([c]) => c === code));
 
   // Captions are stored relative to the clip they were made on (st.clip);
-  // loadClip shifts them if the clip on disk covers a different range.
+  // loadClip shifts them if the current clip covers a different range.
   selectedCapId = null;
   setCaptions([]);
   words = [];
@@ -1228,6 +444,7 @@ async function openSession(sid) {
   showProgress($('cutProgress'), null);
   showProgress($('transcribeProgress'), null);
   showProgress($('makeProgress'), null);
+  showProgress($('relinkProgress'), null);
   if (info.clip) {
     clipRange = st.clip || info.clip;
     words = st.words || [];
@@ -1245,7 +462,7 @@ async function openSession(sid) {
   reached = info.clip ? 3 : 2;
   openStep(reached);
   updateRangeUI();
-  history.replaceState(null, '', '#' + sid);
+  history.replaceState(null, '', location.pathname + location.search + '#' + sid);
   renderLibrary();
   restoring = false;
 }
@@ -1258,8 +475,36 @@ function closeSession() {
   renderExports([]);
   reached = 1;
   openStep(1);
-  history.replaceState(null, '', location.pathname);
+  history.replaceState(null, '', location.pathname + location.search);
 }
+
+// In browser mode the original file might not be stored (it was too big for
+// the browser, or site data was cleared). The clip and GIFs are still there,
+// but picking a new range needs the file again.
+function setNeedsSource(needs, name) {
+  $('relinkBanner').hidden = !needs;
+  $('rangeTools').classList.toggle('disabled', needs);
+  $('rangeBars').classList.toggle('disabled', needs);
+  if (needs) {
+    $('relinkText').textContent = name
+      ? `To pick a different part of it, choose “${name}” again.`
+      : 'To pick a different part of it, choose the same file again.';
+  }
+}
+async function relinkFile(file) {
+  if (!file || !sessionId || !backend.relink) return;
+  const sid = sessionId;
+  $('relinkBtn').disabled = true;
+  const r = await working(() => backend.relink(sid, file, progressTo($('relinkProgress'))));
+  $('relinkBtn').disabled = false;
+  if (r.error) { showStatus($('relinkProgress'), 'Error: ' + r.error, 'error'); return; }
+  showProgress($('relinkProgress'), null);
+  saveNow();
+  await openSession(sid);
+  openStep(2);
+}
+$('relinkBtn').addEventListener('click', () => $('relinkInput').click());
+$('relinkInput').addEventListener('change', e => { relinkFile(e.target.files[0]); e.target.value = ''; });
 
 // --- Step 2: picking the range ---
 const MIN_GAP = 0.05;
@@ -1404,12 +649,18 @@ function updateRangeUI() {
   if (!$('zoomRow').hidden) zoomBar.render();
   setIfIdle($('startInput'), fmtTime(startTime));
   setIfIdle($('endInput'), fmtTime(endTime));
-  $('selLen').textContent = (endTime - startTime).toFixed(2) + 's';
+  const len = endTime - startTime;
+  $('selLen').textContent = len.toFixed(2) + 's';
+  // GIFs of a whole scene get huge; nudge people toward a short moment.
+  $('lenWarn').hidden = len <= 30;
+  $('lenWarn').textContent = len > 120
+    ? 'That’s long for a GIF — it will take a while and the file will be big. Try under 10 seconds.'
+    : 'Tip: GIFs work best under about 10 seconds.';
   const valid = duration > 0 && endTime > startTime;
   $('cutBtn').disabled = !valid;
   $('previewSelBtn').disabled = !valid;
   if (!$('cutBtn').dataset.busy) {
-    $('cutBtn').innerHTML = clipMatchesRange() ? 'Continue → <kbd>Enter</kbd>' : 'Cut clip &amp; continue → <kbd>Enter</kbd>';
+    $('cutBtn').textContent = clipMatchesRange() ? 'Continue →' : 'Use this part →';
   }
   renderSteps();
   scheduleSave();
@@ -1422,9 +673,15 @@ function updatePlayheads() {
 
 $('player').addEventListener('loadedmetadata', () => {
   duration = $('player').duration || duration;
-  if (!(endTime > startTime) || endTime > duration + 0.01) { startTime = 0; endTime = duration; }
+  if (!(endTime > startTime) || endTime > duration + 0.01) ({ start: startTime, end: endTime } = defaultRange());
   updateRangeUI();
 });
+
+// A short clip starts fully selected; for anything longer (a whole movie),
+// start with a few seconds so there's something sensible to drag.
+function defaultRange() {
+  return { start: 0, end: duration <= 15 ? duration : Math.min(duration, 5) };
+}
 ['timeupdate', 'seeked'].forEach(ev => $('player').addEventListener(ev, updatePlayheads));
 // Per-frame loop while playing: smooth playheads, and a tight preview loop
 // (timeupdate alone only fires ~4x a second, so the loop would overshoot).
@@ -1483,14 +740,14 @@ document.querySelectorAll('.nudge').forEach(btn => {
 function stopPreview() {
   if (!previewLooping) return;
   previewLooping = false;
-  $('previewSelBtn').innerHTML = '▶ Preview selection <kbd>P</kbd>';
+  $('previewSelBtn').textContent = '► Watch just this part';
 }
 function togglePreview() {
   if (previewLooping) { $('player').pause(); stopPreview(); return; }
   previewLooping = true;
   $('player').currentTime = startTime;
   $('player').play();
-  $('previewSelBtn').innerHTML = '⏸ Stop preview <kbd>P</kbd>';
+  $('previewSelBtn').textContent = '❚❚ Stop watching';
 }
 $('previewSelBtn').addEventListener('click', togglePreview);
 
@@ -1501,13 +758,16 @@ async function cutAndContinue() {
   if (clipMatchesRange()) { openStep(3); return; }
   $('cutBtn').disabled = true;
   $('cutBtn').dataset.busy = '1';
-  const r = await runJob('/api/cut', {
-    session: sessionId, start: Math.round(startTime * 1000) / 1000, end: Math.round(endTime * 1000) / 1000,
-  }, $('cutProgress'));
+  $('cutBtn').textContent = 'Cutting…';
+  const sid = sessionId;
+  const r = await working(() => backend.cut(sid,
+    Math.round(startTime * 1000) / 1000, Math.round(endTime * 1000) / 1000, progressTo($('cutProgress'))));
   delete $('cutBtn').dataset.busy;
   $('cutBtn').disabled = false;
-  if (r.error) { showStatus($('cutProgress'), 'Error: ' + r.error, 'error'); return; }
+  if (sid !== sessionId) return;  // switched videos meanwhile
+  if (r.error) { showStatus($('cutProgress'), 'Error: ' + r.error, 'error'); updateRangeUI(); return; }
   showProgress($('cutProgress'), null);
+  if (r.fps) fps = r.fps;
   loadClip(r.clip, r.clip_url, r.waveform_url);
   openStep(3);
   updateRangeUI();
@@ -1515,8 +775,8 @@ async function cutAndContinue() {
 }
 $('cutBtn').addEventListener('click', cutAndContinue);
 
-// Recutting a different range used to leave captions at their old offsets;
-// now they're shifted so they stay on the same moment of the video.
+// Recutting a different range shifts the captions so they stay on the same
+// moment of the video.
 function loadClip(clip, url, waveUrl) {
   const newDur = clip.end - clip.start;
   if (clipRange) {
@@ -1554,8 +814,6 @@ const CAP_COLORS = ['#5b8cff', '#f59e0b', '#4ade80', '#f472b6', '#a78bfa', '#22d
 const LANE_H = 30;
 const MIN_CAP = 0.1;
 const SNAP_PX = 8;
-// Must match write_ass() in app.py so the preview looks like the export.
-const ASS_RES_X = 480, ASS_RES_Y = 270, ASS_MARGIN = 20;
 
 const blockEls = new Map();
 const rowEls = new Map();
@@ -1799,11 +1057,11 @@ function makeRow(id) {
   row.className = 'caption-row';
   row.innerHTML = `
     <button type="button" class="cap-num" title="Jump to this caption"></button>
-    <input type="number" class="cap-time" data-field="start" step="0.1" min="0">
+    <input type="number" class="cap-time" data-field="start" step="0.1" min="0" aria-label="Starts at (seconds)">
     <span class="time-sep">–</span>
-    <input type="number" class="cap-time" data-field="end" step="0.1" min="0">
-    <input type="text" class="cap-text" placeholder="Type the caption…">
-    <button type="button" class="cap-del" title="Delete this caption">✕</button>
+    <input type="number" class="cap-time" data-field="end" step="0.1" min="0" aria-label="Ends at (seconds)">
+    <input type="text" class="cap-text" placeholder="Type the caption…" aria-label="Caption text">
+    <button type="button" class="cap-del" title="Delete this caption" aria-label="Delete this caption">✕</button>
   `;
   row.querySelector('.cap-num').addEventListener('click', () => {
     selectCaption(id);
@@ -1907,13 +1165,14 @@ function frameStep(player, dir) {
 
 window.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if ($('helpDialog').open) return;
   const t = e.target;
   if (t.isContentEditable || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'
       || (t.tagName === 'INPUT' && !['range', 'checkbox', 'color'].includes(t.type))) return;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   let handled = true;
 
-  if (openN === 2 && duration) {
+  if (openN === 2 && duration && $('relinkBanner').hidden) {
     const p = $('player');
     if (key === ' ') { if (p.paused) p.play(); else p.pause(); }
     else if (key === 'i') setStartAt(p.currentTime);
@@ -1926,7 +1185,7 @@ window.addEventListener('keydown', (e) => {
     else if (key === '[') { p.pause(); p.currentTime = startTime; }
     else if (key === ']') { p.pause(); p.currentTime = endTime; }
     // Enter on a focused button should press that button, not cut.
-    else if (key === 'Enter' && t.tagName !== 'BUTTON' && t.tagName !== 'A') cutAndContinue();
+    else if (key === 'Enter' && t.tagName !== 'BUTTON' && t.tagName !== 'A' && t.tagName !== 'SUMMARY') cutAndContinue();
     else handled = false;
   } else if (openN === 3 && clipDur) {
     const p = $('clipPlayer');
@@ -1975,8 +1234,8 @@ function toggleClipPlay() {
 }
 $('clipPlayBtn').addEventListener('click', toggleClipPlay);
 $('clipPlayer').addEventListener('click', toggleClipPlay);
-$('clipPlayer').addEventListener('play', () => { $('clipPlayBtn').textContent = '⏸ Pause'; });
-['pause', 'ended'].forEach(ev => $('clipPlayer').addEventListener(ev, () => { $('clipPlayBtn').textContent = '▶ Play'; }));
+$('clipPlayer').addEventListener('play', () => { $('clipPlayBtn').textContent = '❚❚ Pause'; });
+['pause', 'ended'].forEach(ev => $('clipPlayer').addEventListener(ev, () => { $('clipPlayBtn').textContent = '► Play'; }));
 
 let overlayKey = '';
 function renderOverlay(force = false) {
@@ -2093,9 +1352,21 @@ SWATCHES.forEach(color => {
   b.type = 'button';
   b.style.background = color;
   b.title = color;
+  b.setAttribute('aria-label', `Use ${color}`);
   b.addEventListener('click', () => { $('captionColor').value = color; styleChanged(); });
   $('swatches').appendChild(b);
 });
+
+// The caption fonts ship with the app, so the preview uses exactly the
+// font files the export burns in.
+function loadFonts() {
+  const css = cfg.fonts.filter(f => f.file).map(f => `@font-face { font-family: "${f.family}"; `
+    + `src: url("fonts/${f.file}"); font-weight: ${f.weight || 700}; font-display: swap; }`).join('\n');
+  const tag = el('style');
+  tag.textContent = css;
+  document.head.appendChild(tag);
+  cfg.fonts.forEach(f => document.fonts.load(`bold 16px "${f.family}"`).then(() => renderOverlay(true), () => {}));
+}
 
 // --- Auto-caption ---
 $('maxCaptionChars').addEventListener('input', () => {
@@ -2103,15 +1374,19 @@ $('maxCaptionChars').addEventListener('input', () => {
   scheduleSave();
 });
 $('modelSel').addEventListener('change', scheduleSave);
+$('langSel').addEventListener('change', () => { remember('language', { code: $('langSel').value }); scheduleSave(); });
 
 $('transcribeBtn').addEventListener('click', async () => {
   if (captions.length && !confirm('Replace your current captions with a fresh auto-caption?')) return;
   $('transcribeBtn').disabled = true;
-  const r = await runJob('/api/transcribe', {
-    session: sessionId, max_chars: $('maxCaptionChars').value, model: $('modelSel').value,
-  }, $('transcribeProgress'));
+  renderMiniSteps();
+  const sid = sessionId;
+  const r = await working(() => backend.transcribe(sid, {
+    max_chars: $('maxCaptionChars').value, model: $('modelSel').value, language: $('langSel').value,
+  }, progressTo($('transcribeProgress'))));
   $('transcribeBtn').disabled = false;
-  if (r.error) { showStatus($('transcribeProgress'), 'Error: ' + r.error, 'error'); return; }
+  if (sid !== sessionId) return;
+  if (r.error) { showStatus($('transcribeProgress'), 'Error: ' + r.error, 'error'); renderMiniSteps(); return; }
 
   // A model that just got downloaded no longer needs the size warning.
   const m = cfg.models.find(x => x.name === $('modelSel').value);
@@ -2120,14 +1395,26 @@ $('transcribeBtn').addEventListener('click', async () => {
   words = r.words || [];
   renderWordTicks();
   if (!r.segments.length) {
-    showStatus($('transcribeProgress'), 'Couldn’t make out any speech — add captions by hand below.', 'error');
+    showStatus($('transcribeProgress'), 'Couldn’t make out any speech — type your captions in by hand below.', 'error');
     setCaptions([]);
     addCaptionAt(0);
     return;
   }
-  showStatus($('transcribeProgress'), `✓ Found ${r.segments.length} caption${r.segments.length === 1 ? '' : 's'} — fix any misheard words below.`, 'ok');
+  showStatus($('transcribeProgress'), `✓ Found ${r.segments.length} caption${r.segments.length === 1 ? '' : 's'}. Play the clip and fix any misheard words below.`, 'ok');
   setCaptions(r.segments);
 });
+
+function populateLanguages() {
+  const sel = $('langSel');
+  sel.innerHTML = '';
+  cfg.languages.forEach(([code, name]) => {
+    const opt = el('option', '', name);
+    opt.value = code;
+    sel.appendChild(opt);
+  });
+  const saved = recall('language').code;
+  sel.value = cfg.languages.some(([c]) => c === saved) ? saved : cfg.default_language;
+}
 
 function populateModels(selected) {
   const sel = $('modelSel');
@@ -2149,7 +1436,7 @@ function applyOutput(o) {
 ['outputWidth', 'outputFps'].forEach(id => $(id).addEventListener('change', () => { remember('output', getOutput()); scheduleSave(); }));
 $('clipName').addEventListener('input', scheduleSave);
 
-// With no name typed, the GIF is named after its first caption.
+// With no name typed, the GIF is named after its captions.
 function defaultName() {
   const text = captions.filter(c => c.text.trim()).map(c => c.text).join(' ');
   let slug = slugify(text || (session && session.title) || '');
@@ -2166,24 +1453,21 @@ async function makeGif(overwrite = false) {
   if (!exportCaptions.length && !overwrite && !confirm('There are no captions yet. Make the GIF without any?')) return;
 
   saveNow();
+  const sid = sessionId;
   $('makeBtn').disabled = true;
-  showProgress($('makeProgress'), { message: 'Starting…', progress: null });
-  const start = await api('/api/export', {
-    json: { session: sessionId, captions: exportCaptions, name, ...getStyle(), ...getOutput(), overwrite },
-  });
-  if (start.conflict) {
-    $('makeBtn').disabled = false;
+  const r = await working(() => backend.exportGif(sid,
+    { captions: exportCaptions, name, ...getStyle(), ...getOutput(), overwrite }, progressTo($('makeProgress'))));
+  $('makeBtn').disabled = false;
+  if (r.conflict) {
     showProgress($('makeProgress'), null);
-    if (confirm(`You already made a GIF called "${name}" from this video. Replace it?\n\n(Cancel, then change the name, to keep both.)`)) makeGif(true);
+    if (confirm(`You already made a GIF called "${name}" from this video. Replace it?\n\n(Cancel, then change the file name, to keep both.)`)) makeGif(true);
     return;
   }
-  const r = start.error ? start : await waitJob(start.job, j => showProgress($('makeProgress'), j));
-  $('makeBtn').disabled = false;
   if (r.error) { showStatus($('makeProgress'), 'Error: ' + r.error, 'error'); return; }
+  if (sid !== sessionId) return;
 
-  showStatus($('makeProgress'), `✓ Made ${r.name}.gif (${fmtSize(r.gif_size)})`, 'ok');
-  const info = await api(`/api/sessions/${sessionId}`);
-  renderExports(info.exports || [r]);
+  showStatus($('makeProgress'), `✓ Made ${r.name}.gif (${fmtSize(r.gif_size)}) — it’s below, ready to download.`, 'ok');
+  renderExports(await backend.exports(sid));
   loadLibrary();  // GIF count badge
   $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -2191,9 +1475,10 @@ $('makeBtn').addEventListener('click', () => makeGif());
 
 let exportList = [];
 function renderExports(list) {
-  list = list || [];
+  list = Array.isArray(list) ? list : [];
   exportList = list;
   $('results').hidden = !list.length || openN === 1;
+  renderMiniSteps();
   if (!list.length) return;
   const [latest, ...older] = list;
   $('latestGif').src = latest.gif_url;
@@ -2209,7 +1494,7 @@ function renderExports(list) {
   // Many messaging apps cap or recompress GIFs above ~8-10 MB.
   const big = latest.gif_size > 8 * 1024 * 1024;
   $('latestWarn').hidden = !big;
-  if (big) $('latestWarn').textContent = '⚠ That’s a big GIF — some messaging apps may reject or shrink it. Try a smaller width, lower smoothness, or a shorter clip (or send the MP4).';
+  if (big) $('latestWarn').textContent = '⚠ That’s a big GIF — some messaging apps may reject or shrink it. Try a smaller size, less smoothness, or a shorter clip (or send the MP4).';
 
   $('olderWrap').hidden = !older.length;
   const grid = $('olderGrid');
@@ -2232,6 +1517,16 @@ function renderExports(list) {
       mp4A.setAttribute('download', x.name + '.mp4');
       meta.appendChild(mp4A);
     }
+    const del = el('button', 'link', 'Delete');
+    del.type = 'button';
+    del.addEventListener('click', async () => {
+      if (!confirm(`Delete ${x.name}.gif (and its MP4)?`)) return;
+      const res = await backend.deleteExport(sessionId, x.name);
+      if (res.error) { alert(res.error); return; }
+      renderExports(await backend.exports(sessionId));
+      loadLibrary();
+    });
+    meta.appendChild(del);
     card.append(img, meta);
     grid.appendChild(card);
   });
@@ -2239,28 +1534,114 @@ function renderExports(list) {
 $('anotherRangeBtn').addEventListener('click', () => { openStep(2); $('step2').scrollIntoView({ behavior: 'smooth' }); });
 $('newVideoBtn').addEventListener('click', () => { openStep(1); $('step1').scrollIntoView({ behavior: 'smooth' }); });
 
+// --- Help ---
+function openHelp(section) {
+  $('helpDialog').showModal();
+  const target = section && $('help' + section[0].toUpperCase() + section.slice(1));
+  if (target) {
+    target.scrollIntoView({ block: 'start' });
+    target.classList.remove('flash');
+    void target.offsetWidth;
+    target.classList.add('flash');
+  } else {
+    $('helpDialog').scrollTop = 0;
+  }
+}
+$('helpBtn').addEventListener('click', () => openHelp());
+document.querySelectorAll('[data-help]').forEach(b => b.addEventListener('click', () => openHelp(b.dataset.help)));
+$('helpDialog').addEventListener('click', e => { if (e.target === $('helpDialog')) $('helpDialog').close(); });
+
 // --- Startup ---
+// Served by app.py? Then use it. Otherwise (GitHub Pages, any static host,
+// or ?engine=browser) do everything in the browser.
+async function pickBackend() {
+  if (new URLSearchParams(location.search).get('engine') !== 'browser') {
+    try {
+      const res = await fetch('api/config', { cache: 'no-store' });
+      if (res.ok && (res.headers.get('Content-Type') || '').includes('json')) {
+        const c = await res.json();
+        if (c.mode === 'server') return [serverBackend, c];
+      }
+    } catch (e) { /* no server here */ }
+  }
+  const { browserBackend } = await import('./backend-browser.js');
+  return [browserBackend, await browserBackend.config()];
+}
+
+function browserSupportProblem() {
+  if (!window.WebAssembly) return 'This browser can’t run WebAssembly, which this app needs to process video.';
+  if (!window.indexedDB) return 'This browser has site storage turned off (it may be a private window), so the app can’t save your work.';
+  if (!window.Worker) return 'This browser can’t run background workers, which the app needs for captions.';
+  return null;
+}
+
 (async () => {
-  const c = await api('/api/config');
-  if (!c.error) cfg = c;
+  const [b, c] = await pickBackend();
+  backend = b;
+  if (c.error) {
+    $('supportBanner').hidden = false;
+    $('supportBanner').textContent = 'Couldn’t start: ' + c.error;
+    return;
+  }
+  cfg = c;
+  const browser = backend.mode === 'browser';
+  document.body.classList.add('mode-' + backend.mode);
+  if (backend.mode === 'server') {
+    backend.hasWhisper = c.whisper !== false;
+    // Without Whisper on the server, captions are made in the browser instead.
+    if (!backend.hasWhisper) {
+      const speech = await import('./speech.js');
+      const have = await speech.downloadedModels();
+      cfg.models = speech.MODELS.map(m => ({ ...m, downloaded: have.has(m.name) }));
+      cfg.default_model = speech.DEFAULT_MODEL;
+      cfg.languages = speech.LANGUAGES;
+      cfg.default_language = 'en';
+    }
+  }
+
+  $('modeChip').hidden = false;
+  $('modeChip').innerHTML = browser
+    ? '🔒 <b>Private:</b> runs entirely in your browser'
+    : '💻 <b>Running on your computer</b>' + (c.youtube ? ' · YouTube enabled' : '');
+  $('modeChip').title = browser
+    ? 'Your videos never leave this computer — all the processing happens in this tab.'
+    : 'Served by app.py on this computer, using its ffmpeg' + (c.whisper === false ? '' : ' and Whisper') + '.';
+  $('footMode').textContent = browser
+    ? 'Everything happens in this browser tab — nothing is uploaded.'
+    : 'Running on your computer via app.py.';
+  $('youtubeRow').hidden = !c.youtube;
+  $('orLine').hidden = !c.youtube;
+  $('ytNote').hidden = !!c.youtube;
+  $('dzNote').textContent = browser
+    ? 'MP4, MOV, WebM, MKV and most other formats. Your video stays on this computer.'
+    : 'MP4, MOV, WebM, MKV and most other formats.';
+  if (!browser) $('keepHint').textContent = 'Tip: you can drag the GIF straight from here into a chat or email. Your GIFs are also saved in the app’s sessions/ folder.';
+  if (browser) {
+    const problem = browserSupportProblem();
+    if (problem) {
+      $('supportBanner').hidden = false;
+      $('supportBanner').textContent = '⚠ ' + problem + ' Try a recent version of Chrome, Edge or Firefox.';
+    }
+  }
+
   cfg.fonts.forEach(f => {
-    const opt = el('option', '', `${f.label}`);
+    const opt = el('option', '', f.label);
     opt.value = f.family;
     opt.style.fontFamily = `"${f.family}"`;
     $('fontSel').appendChild(opt);
   });
+  loadFonts();
   populateModels();
+  populateLanguages();
   applyStyle({ ...defaultStyle(), ...recall('style') });
   applyOutput(recall('output'));
   renderSteps();
   await loadLibrary();
-  // The session id lives in the URL, so a refresh reopens what you were working on.
+  // The video's id lives in the URL, so a refresh reopens what you were working on.
   const sid = location.hash.slice(1);
   const entry = libEntries.find(e => e.session === sid);
   if (entry && entry.status === 'ready') openSession(sid);
-  else if (entry && entry.status === 'working' && entry.job) followSourceJob({ job: entry.job.id });
+  else if (entry && entry.status === 'working' && entry.job && backend.follow) {
+    working(() => backend.follow(entry, progressTo(srcProgress))).then(openResult);
+  }
 })();
-</script>
-
-</body>
-</html>

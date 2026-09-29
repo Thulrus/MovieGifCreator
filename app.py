@@ -1,5 +1,10 @@
 """
-Movie Quote GIF Maker — local web app.
+Movie Quote GIF Maker — the local server.
+
+The page itself (web/) is a static site that can run entirely in a browser,
+which is how the GitHub Pages copy works. Running this server on your own
+computer serves that same page but does the work natively instead, and adds
+what a browser can't do on its own: downloading from YouTube with yt-dlp.
 
 Run it:
     pip install -r requirements.txt
@@ -12,6 +17,7 @@ Workflow:
     1. Upload a video, fetch one from YouTube, or reopen one from the library.
     2. Mark the start/end of the part you want.
     3. Auto-caption it with Whisper, edit/style the captions, export a GIF + MP4.
+       (Whisper is optional here: without it, the page captions in the browser.)
 
 Slow work (downloads, transcodes, cutting, transcription, export) runs as a
 background job: the API call returns a job id straight away and the page
@@ -21,11 +27,11 @@ Set the DATA_DIR environment variable to keep session data somewhere other
 than ./sessions (handy for a throwaway test run).
 """
 
+import importlib.util
 import json
 import os
 import re
 import shutil
-import struct
 import subprocess
 import sys
 import tempfile
@@ -35,15 +41,18 @@ import traceback
 import uuid
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, render_template, request, send_from_directory
+from flask import Flask, abort, jsonify, request, send_from_directory
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 
 BASE_DIR = Path(__file__).resolve().parent
+WEB_DIR = BASE_DIR / "web"
+FONTS_DIR = WEB_DIR / "fonts"
 DATA_DIR = Path(os.environ.get("DATA_DIR") or BASE_DIR / "sessions").resolve()
 DATA_DIR.mkdir(exist_ok=True, parents=True)
 
-app = Flask(__name__)
+# The page's files (web/) are served from the root, next to the API.
+app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024 * 1024  # 4GB, movies are big
 
 SID_RE = re.compile(r"^[0-9a-f]{12}$")
@@ -59,6 +68,15 @@ COPYABLE_AUDIO = {"aac"}
 SEEKABLE_EXTS = {".mp4", ".m4v", ".mov", ".mkv", ".webm"}
 
 DEFAULT_MAX_CAPTION_CHARS = 40
+# The speech's language; "auto" lets Whisper work it out.
+LANGUAGES = [
+    ("auto", "Detect automatically"), ("en", "English"), ("es", "Spanish"), ("fr", "French"),
+    ("de", "German"), ("it", "Italian"), ("pt", "Portuguese"), ("nl", "Dutch"), ("sv", "Swedish"),
+    ("no", "Norwegian"), ("da", "Danish"), ("fi", "Finnish"), ("pl", "Polish"), ("cs", "Czech"),
+    ("ru", "Russian"), ("uk", "Ukrainian"), ("el", "Greek"), ("tr", "Turkish"), ("ar", "Arabic"),
+    ("he", "Hebrew"), ("hi", "Hindi"), ("id", "Indonesian"), ("vi", "Vietnamese"), ("th", "Thai"),
+    ("zh", "Chinese"), ("ja", "Japanese"), ("ko", "Korean"),
+]
 WHISPER_MODELS = [
     ("tiny", "Tiny — fastest, least accurate", "75 MB"),
     ("base", "Base — fast", "145 MB"),
@@ -66,15 +84,14 @@ WHISPER_MODELS = [
     ("medium", "Medium — most accurate, slow", "1.5 GB"),
 ]
 DEFAULT_WHISPER_MODEL = "small"
-# (fontconfig family, label). Only the ones actually installed are offered.
-FONT_CHOICES = [
-    ("DejaVu Sans", "Classic"),
-    ("League Gothic", "Meme (Impact-style)"),
-    ("Liberation Sans", "Arial-style"),
-    ("Open Sans", "Open Sans"),
-    ("Ubuntu", "Ubuntu"),
-]
-DEFAULT_FONT = "DejaVu Sans"
+# The caption fonts ship with the app (web/fonts), so captions look the same
+# on every computer and in the browser-only version.
+FONTS_CFG = json.loads((FONTS_DIR / "fonts.json").read_text())
+DEFAULT_FONT = FONTS_CFG["default"]
+
+
+def has_module(name: str) -> bool:
+    return importlib.util.find_spec(name) is not None
 
 
 # --- Background jobs ---------------------------------------------------------
@@ -201,54 +218,15 @@ def stream_fps(stream: dict | None) -> float | None:
 
 # --- Fonts & whisper ---------------------------------------------------------
 
-def font_em_factor(font_file: str) -> float | None:
-    """libass sizes a font so that usWinAscent + usWinDescent (from the OS/2
-    table) equals the requested size. Browsers size by the em square instead,
-    so the preview needs this ratio to match the burned-in captions."""
-    try:
-        data = Path(font_file).read_bytes()
-        num_tables = struct.unpack(">H", data[4:6])[0]
-        tables = {}
-        for i in range(num_tables):
-            rec = data[12 + 16 * i: 28 + 16 * i]
-            tables[rec[:4]] = struct.unpack(">I", rec[8:12])[0]
-        upem = struct.unpack(">H", data[tables[b"head"] + 18: tables[b"head"] + 20])[0]
-        os2 = tables[b"OS/2"]
-        asc, desc = struct.unpack(">HH", data[os2 + 74: os2 + 78])
-        return round((asc + desc) / upem, 4) if upem and asc + desc else None
-    except (OSError, KeyError, struct.error, IndexError):
-        return None
-
-
-_fonts_cache = None
-
-
 def available_fonts() -> list:
-    global _fonts_cache
-    if _fonts_cache is None:
-        fonts = []
-        for family, label in FONT_CHOICES:
-            # fc-list rather than fc-match: fc-list only returns exact family
-            # matches, so an uninstalled font shows up as no output at all.
-            try:
-                r = subprocess.run(["fc-list", family, "file", "style"], capture_output=True, text=True)
-            except OSError:
-                break
-            candidates = []
-            for line in r.stdout.splitlines():
-                file, _, style = line.partition(": :style=")
-                style = style.lower()
-                # Prefer an upright bold face, since captions are bold.
-                score = (("bold" in style and "semibold" not in style and "extrabold" not in style) * 4
-                         - any(w in style for w in ("italic", "oblique")) * 8
-                         - ("condensed" in style) * 2)
-                candidates.append((score, file.strip()))
-            if not candidates:
-                continue  # not installed
-            file = max(candidates)[1]
-            fonts.append({"family": family, "label": label, "em": font_em_factor(file) or 1.164})
-        _fonts_cache = fonts or [{"family": DEFAULT_FONT, "label": "Classic", "em": 1.164}]
-    return _fonts_cache
+    return FONTS_CFG["fonts"]
+
+
+def ass_filter(ass_name: str) -> str:
+    """The ass filter, pointed at the bundled fonts. Filter options are
+    colon-separated, so the folder is quoted (a ' in the path can't be)."""
+    fonts = str(FONTS_DIR)
+    return f"ass={ass_name}:fontsdir='{fonts}'" if "'" not in fonts else f"ass={ass_name}"
 
 
 def whisper_cache_dir() -> Path:
@@ -586,7 +564,7 @@ def prepare_job(job: Job, d: Path, src: Path):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return send_from_directory(WEB_DIR, "index.html")
 
 
 @app.errorhandler(Exception)
@@ -604,12 +582,17 @@ def handle_error(e):
 def config():
     cache = whisper_cache_dir()
     return jsonify(
+        mode="server",
+        youtube=has_module("yt_dlp"),
+        whisper=has_module("whisper"),
         fonts=available_fonts(),
         default_font=DEFAULT_FONT,
         models=[{"name": n, "label": label, "size": size,
                  "downloaded": (cache / f"{n}.pt").exists()}
                 for n, label, size in WHISPER_MODELS],
         default_model=DEFAULT_WHISPER_MODEL,
+        languages=LANGUAGES,
+        default_language="auto",
     )
 
 
@@ -818,6 +801,8 @@ def fetch_youtube():
     url = str((request.get_json() or {}).get("url") or "").strip()
     if not url:
         abort(400, "No URL given")
+    if not has_module("yt_dlp"):
+        abort(400, "yt-dlp isn't installed (pip install yt-dlp)")
 
     # Quick check before touching the network: already have this video?
     m = YOUTUBE_ID_RE.search(url)
@@ -909,7 +894,7 @@ def cut():
     return jsonify(job=job.id)
 
 
-def transcribe_job(job: Job, d: Path, max_chars: int, model_name: str):
+def transcribe_job(job: Job, d: Path, max_chars: int, model_name: str, language: str | None):
     clip = d / "clip.mp4"
     audio = d / "clip.wav"
     job.update(message="Extracting audio…")
@@ -922,7 +907,7 @@ def transcribe_job(job: Job, d: Path, max_chars: int, model_name: str):
                        f"Downloading the '{model_name}' speech model (one-time)…")
         model = get_whisper_model(model_name)
         job.update(message="Listening to the clip…")
-        result = model.transcribe(str(audio), fp16=False, word_timestamps=True)
+        result = model.transcribe(str(audio), fp16=False, word_timestamps=True, language=language)
 
     segments = []
     words = []
@@ -941,6 +926,8 @@ def transcribe():
     d = get_session(data.get("session"))
     if not (d / "clip.mp4").exists():
         abort(400, "Cut a clip first")
+    if not has_module("whisper"):
+        abort(400, "Whisper isn't installed on the server (pip install openai-whisper)")
     try:
         max_chars = int(data.get("max_chars", DEFAULT_MAX_CAPTION_CHARS))
     except (TypeError, ValueError):
@@ -949,7 +936,9 @@ def transcribe():
     model = data.get("model") or DEFAULT_WHISPER_MODEL
     if model not in {n for n, _, _ in WHISPER_MODELS}:
         abort(400, "Unknown speech model")
-    job = start_job("transcribe", d.name, transcribe_job, d, max_chars, model)
+    language = data.get("language")
+    language = language if language in {code for code, _ in LANGUAGES} - {"auto"} else None
+    job = start_job("transcribe", d.name, transcribe_job, d, max_chars, model, language)
     return jsonify(job=job.id)
 
 
@@ -973,7 +962,7 @@ def export_job(job: Job, d: Path, name: str, captions: list, style: dict, width:
     # ass filter gets a plain relative filename (no path escaping needed).
     job.update(progress=0, message="Burning in captions…")
     burned = d / "burned.mp4"
-    ffmpeg(["-i", clip, "-vf", f"ass=captions.ass,scale={width}:-2:flags=lanczos",
+    ffmpeg(["-i", clip, "-vf", f"{ass_filter('captions.ass')},scale={width}:-2:flags=lanczos",
             "-c:v", "libx264", "-crf", "23", "-preset", "medium", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", burned],
            job, duration, (0, 0.55), cwd=d)
@@ -1037,10 +1026,28 @@ def export():
     return jsonify(job=job.id)
 
 
+@app.route("/api/sessions/<sid>/exports/<name>", methods=["DELETE"])
+def delete_export(sid, name):
+    d = get_session(sid)
+    removed = False
+    for folder in (d / "exports", d):
+        for ext in (".gif", ".mp4"):
+            f = folder / secure_filename(name + ext)
+            if f.is_file() and f.parent == folder:
+                f.unlink()
+                removed = True
+    if not removed:
+        abort(404, "That GIF doesn't exist any more")
+    return jsonify(ok=True)
+
+
 @app.route("/sessions/<sid>/<path:filename>")
 def serve_session_file(sid, filename):
     return send_from_directory(get_session(sid), filename)
 
 
 if __name__ == "__main__":
+    if not shutil.which("ffmpeg"):
+        print("\n*** ffmpeg isn't installed (or isn't on your PATH). The app needs it to\n"
+              "*** cut and export video: https://ffmpeg.org/download.html\n")
     app.run(debug=True, host="127.0.0.1", port=int(os.environ.get("PORT", 5050)), threaded=True)

@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Movie Quote GIF Maker</title>
+<meta name="description" content="Turn any moment from a video into a captioned GIF, right in your browser. Auto-captions included; your video never leaves your computer.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<header class="page-head">
+  <div class="brand">
+    <h1>🎬 Movie Quote GIF Maker</h1>
+    <p class="subtitle">Turn any moment from a video into a captioned GIF you can text to a friend.</p>
+  </div>
+  <div class="head-right">
+    <span class="mode-chip" id="modeChip" hidden></span>
+    <button type="button" class="secondary small" id="helpBtn">❓ Help</button>
+  </div>
+</header>
+
+<div class="banner warn" id="supportBanner" hidden></div>
+
+<ol class="howto" id="howto" hidden>
+  <li><span class="howto-num">1</span><div><b>Choose a video</b><span>Any video file on your computer — even a whole movie.</span></div></li>
+  <li><span class="howto-num">2</span><div><b>Pick the moment</b><span>Play it and mark where the quote starts and ends.</span></div></li>
+  <li><span class="howto-num">3</span><div><b>Caption &amp; make the GIF</b><span>Captions are written for you automatically — fix any words, then download.</span></div></li>
+</ol>
+
+<section class="step open" id="step1" data-step="1">
+  <header class="step-head">
+    <span class="num">1</span><h2>Choose a video</h2>
+    <span class="step-summary" id="sum1"></span>
+    <button type="button" class="link step-edit">Change video</button>
+  </header>
+  <div class="step-body">
+    <div class="youtube-row" id="youtubeRow" hidden>
+      <input type="text" id="youtubeUrl" placeholder="Paste a YouTube link…" autocomplete="off" aria-label="YouTube link">
+      <button type="button" id="fetchBtn">⬇ Get video</button>
+    </div>
+    <p class="or-line" id="orLine" hidden><span>or use a file from your computer</span></p>
+
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose a video file">
+      <div class="dz-icon">📂</div>
+      <div class="dz-title">Drop a video file here</div>
+      <div class="dz-or">or</div>
+      <button type="button" id="uploadBtn" tabindex="-1">Choose a video file…</button>
+      <div class="dz-note" id="dzNote">MP4, MOV, WebM, MKV and most other formats.</div>
+    </div>
+    <input type="file" id="fileInput" accept="video/*,.mkv,.vob,.ts,.m2ts,.avi,.flv,.wmv" hidden>
+    <p class="yt-note" id="ytNote" hidden>
+      Got a YouTube link instead? Downloading from YouTube only works when you
+      <button type="button" class="inline-link" data-help="youtube">run the app on your own computer</button>.
+      For now, download the video some other way and drop the file in above.
+    </p>
+    <div class="progress" id="srcProgress" hidden><div class="bar"><span></span></div><div class="msg"></div></div>
+
+    <div class="library" id="library" hidden>
+      <div class="library-head">
+        <h3>Your videos (<span id="libCount">0</span>)</h3>
+        <span class="lib-hint">Click one to keep working on it.</span>
+        <input type="text" id="libFilter" placeholder="Filter…" hidden aria-label="Filter your videos">
+      </div>
+      <div class="library-grid" id="libraryGrid"></div>
+      <p class="storage-note" id="storageNote" hidden></p>
+    </div>
+  </div>
+</section>
+
+<section class="step locked" id="step2" data-step="2">
+  <header class="step-head">
+    <span class="num">2</span><h2>Pick the moment</h2>
+    <span class="step-summary" id="sum2"></span>
+    <button type="button" class="link step-edit">Change the moment</button>
+  </header>
+  <div class="step-body">
+    <p class="step-intro">
+      Play the video and find your quote. Press <b>Set start</b> just before it begins and
+      <b>Set end</b> just after it finishes — or drag the handles on the bar under the video.
+      Then press <b>Use this part</b>.
+    </p>
+    <div class="banner" id="relinkBanner" hidden>
+      <div>
+        <b>This video’s original file isn’t saved in this browser.</b>
+        <span id="relinkText">To pick a different part of it, choose the same file again.</span>
+      </div>
+      <button type="button" class="small" id="relinkBtn">Choose the file…</button>
+      <input type="file" id="relinkInput" accept="video/*,.mkv,.vob,.ts,.m2ts,.avi,.flv,.wmv" hidden>
+    </div>
+    <div class="progress" id="relinkProgress" hidden><div class="bar"><span></span></div><div class="msg"></div></div>
+    <div class="split" id="rangeTools">
+      <div>
+        <video id="player" controls preload="auto" playsinline></video>
+      </div>
+      <div class="side">
+        <div class="card">
+          <div class="mark">
+            <label class="field-label" for="startInput">Starts at</label>
+            <div class="mark-row">
+              <input type="text" class="time-input" id="startInput" autocomplete="off">
+              <button type="button" class="secondary small" id="markStartBtn" title="Set the start to where the video is now (keyboard: I)">Set start here</button>
+            </div>
+            <div class="nudges" aria-label="Nudge the start">
+              <button type="button" class="secondary small nudge" data-target="start" data-delta="-1">−1s</button>
+              <button type="button" class="secondary small nudge" data-target="start" data-delta="-0.1">−0.1</button>
+              <button type="button" class="secondary small nudge" data-target="start" data-delta="0.1">+0.1</button>
+              <button type="button" class="secondary small nudge" data-target="start" data-delta="1">+1s</button>
+            </div>
+          </div>
+          <div class="mark">
+            <label class="field-label" for="endInput">Ends at</label>
+            <div class="mark-row">
+              <input type="text" class="time-input" id="endInput" autocomplete="off">
+              <button type="button" class="secondary small" id="markEndBtn" title="Set the end to where the video is now (keyboard: O)">Set end here</button>
+            </div>
+            <div class="nudges" aria-label="Nudge the end">
+              <button type="button" class="secondary small nudge" data-target="end" data-delta="-1">−1s</button>
+              <button type="button" class="secondary small nudge" data-target="end" data-delta="-0.1">−0.1</button>
+              <button type="button" class="secondary small nudge" data-target="end" data-delta="0.1">+0.1</button>
+              <button type="button" class="secondary small nudge" data-target="end" data-delta="1">+1s</button>
+            </div>
+          </div>
+          <p class="sel-len">Your clip is <b id="selLen">0.00s</b> long <span class="len-warn" id="lenWarn" hidden></span></p>
+          <div class="actions">
+            <button type="button" class="secondary" id="previewSelBtn">► Watch just this part</button>
+            <button type="button" id="cutBtn">Use this part →</button>
+          </div>
+          <div class="progress" id="cutProgress" hidden><div class="bar"><span></span></div><div class="msg"></div></div>
+        </div>
+        <details class="shortcuts">
+          <summary>Keyboard shortcuts</summary>
+          <table>
+            <tr><td><kbd>Space</kbd></td><td>Play / pause</td></tr>
+            <tr><td><kbd>I</kbd> <kbd>O</kbd></td><td>Set start / end at the playhead</td></tr>
+            <tr><td><kbd>P</kbd></td><td>Watch just the selected part (loops)</td></tr>
+            <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>Step back / forward one frame</td></tr>
+            <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Jump 1s (hold <kbd>Shift</kbd> for 5s)</td></tr>
+            <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Jump to the start / end of the selection</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>Use this part</td></tr>
+          </table>
+        </details>
+        <a id="downloadSourceLink" download hidden>⬇ Download the original video file</a>
+      </div>
+    </div>
+
+    <div class="range-bars" id="rangeBars">
+      <div id="rangeMain"></div>
+      <p class="bar-label">The whole video — drag the two handles to choose your part, or click anywhere to jump there.</p>
+      <div id="zoomRow" hidden>
+        <div id="rangeZoom"></div>
+        <p class="bar-label">🔍 Zoomed in around your selection, for fine-tuning.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="step locked" id="step3" data-step="3">
+  <header class="step-head">
+    <span class="num">3</span><h2>Caption &amp; make your GIF</h2>
+    <span class="step-summary" id="sum3"></span>
+    <button type="button" class="link step-edit">Edit captions</button>
+  </header>
+  <div class="step-body">
+    <ol class="mini-steps">
+      <li id="ms1"><span><b>Add captions</b> — press Auto-caption, or type your own</span></li>
+      <li id="ms2"><span><b>Check the words</b> and timing on the video</span></li>
+      <li id="ms3"><span><b>Make the GIF</b> when it looks right</span></li>
+    </ol>
+    <div class="s3-grid">
+      <div class="s3-video">
+        <div class="video-wrap">
+          <video id="clipPlayer" preload="auto" playsinline></video>
+          <div class="cap-overlay" id="capOverlay"></div>
+        </div>
+        <div class="clip-controls">
+          <button type="button" class="secondary small" id="clipPlayBtn">► Play</button>
+          <span class="clip-time" id="clipTime">0.00s / 0.00s</span>
+        </div>
+      </div>
+      <div class="side s3-side">
+        <div class="card">
+          <h3>Caption style</h3>
+          <div class="control">
+            <label for="fontSel">Font</label>
+            <select id="fontSel"></select>
+          </div>
+          <div class="control">
+            <label for="fontSize">Size</label>
+            <input type="range" id="fontSize" min="14" max="72" value="32">
+            <span class="val" id="fontSizeVal">32</span>
+          </div>
+          <div class="control">
+            <label for="captionColor">Color</label>
+            <input type="color" id="captionColor" value="#ffffff">
+            <div class="swatches" id="swatches"></div>
+          </div>
+          <div class="control">
+            <label for="outline">Outline</label>
+            <input type="range" id="outline" min="0" max="6" value="3">
+            <span class="val" id="outlineVal">3</span>
+          </div>
+          <div class="control">
+            <label>Position</label>
+            <div class="seg"><button type="button" id="posTop">Top</button><button type="button" id="posBottom" class="active">Bottom</button></div>
+          </div>
+          <div class="control">
+            <label></label>
+            <label class="check"><input type="checkbox" id="uppercase"> ALL CAPS</label>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Make the GIF</h3>
+          <div class="control">
+            <label for="clipName">File name</label>
+            <input type="text" id="clipName" autocomplete="off">
+          </div>
+          <div class="control">
+            <label for="outputWidth">Size</label>
+            <select id="outputWidth">
+              <option value="640">Large — 640px wide</option>
+              <option value="480">Medium — 480px</option>
+              <option value="360" selected>Standard — 360px</option>
+              <option value="240">Small — 240px</option>
+            </select>
+          </div>
+          <div class="control">
+            <label for="outputFps">Smoothness</label>
+            <select id="outputFps">
+              <option value="24">Smoothest (24 fps)</option>
+              <option value="20">Smooth (20 fps)</option>
+              <option value="15" selected>Standard (15 fps)</option>
+              <option value="12">Choppier (12 fps)</option>
+              <option value="10">Choppiest (10 fps)</option>
+            </select>
+          </div>
+          <p class="hint">Bigger and smoother means a bigger file. Standard is right for most chats.</p>
+          <button type="button" class="block big" id="makeBtn">🎉 Make GIF</button>
+          <div class="progress" id="makeProgress" hidden><div class="bar"><span></span></div><div class="msg"></div></div>
+        </div>
+      </div>
+
+    <div class="captions-area s3-caps">
+      <div class="caption-tools">
+        <button type="button" id="transcribeBtn">📝 Auto-caption</button>
+        <button type="button" class="secondary" id="addCaptionBtn">+ Add a caption</button>
+        <details class="cap-options">
+          <summary>Options</summary>
+          <div class="cap-options-body">
+            <label>Language <select id="langSel"></select></label>
+            <label>Speech model <select id="modelSel"></select></label>
+            <label>Longest caption <input type="range" id="maxCaptionChars" min="20" max="100" step="5" value="40"> <span id="maxCaptionCharsVal">40</span> letters</label>
+            <p class="hint">Bigger models hear more accurately but take longer (and download once). Shorter captions are easier to read in a GIF.</p>
+          </div>
+        </details>
+      </div>
+      <div class="progress" id="transcribeProgress" hidden><div class="bar"><span></span></div><div class="msg"></div></div>
+
+      <div class="cap-timeline" id="capTimeline">
+        <div class="cap-lanes" id="capLanes">
+          <div class="cap-empty" id="capEmpty"><span>No captions yet. Press <b>Auto-caption</b> above, or double-click here to add one.</span></div>
+        </div>
+        <div class="cap-wave" id="capWave"></div>
+        <div class="cap-ruler" id="capRuler"></div>
+        <div class="cap-snap" id="capSnap"></div>
+        <div class="cap-playhead" id="capPlayhead"></div>
+      </div>
+      <details class="shortcuts timeline-help">
+        <summary>How to adjust timing</summary>
+        <p class="hint">Drag a caption on the timeline to move it, or drag its edges to change when it starts and ends (hold <kbd>Alt</kbd> to stop it snapping to words).
+        Double-click empty space or press <kbd>N</kbd> to add a caption. Click a caption, then <kbd>Delete</kbd> removes it and <kbd>←</kbd> <kbd>→</kbd> nudge it.
+        <kbd>Space</kbd> plays, <kbd>,</kbd> <kbd>.</kbd> step one frame.</p>
+      </details>
+
+      <div id="captionList"></div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<section class="step" id="results" hidden>
+  <header class="step-head">
+    <span class="num">✓</span><h2>Your GIFs from this video</h2>
+  </header>
+  <div class="results-body">
+    <div class="latest">
+      <div class="latest-frame"><img id="latestGif" alt="Your captioned GIF" draggable="true"></div>
+      <div>
+        <h3 id="latestName"></h3>
+        <p class="sizes" id="latestSizes"></p>
+        <p class="size-warn" id="latestWarn" hidden></p>
+        <div class="download-links">
+          <a id="downloadGif" download>⬇ Download GIF</a>
+          <a id="downloadMp4" class="alt" download>⬇ Download as MP4 video (smaller, sharper)</a>
+        </div>
+        <p class="hint" id="keepHint" style="margin-top:10px">Tip: you can drag the GIF straight from here into a chat or email.</p>
+        <div class="after-actions">
+          <button type="button" class="secondary small" id="anotherRangeBtn">✂️ Another moment from this video</button>
+          <button type="button" class="secondary small" id="newVideoBtn">🎬 A different video</button>
+        </div>
+      </div>
+    </div>
+    <div class="older" id="olderWrap" hidden>
+      <h4>Earlier GIFs from this video</h4>
+      <div class="older-grid" id="olderGrid"></div>
+    </div>
+  </div>
+</section>
+
+<footer class="page-foot">
+  <span id="footMode"></span>
+  <a href="https://github.com/Thulrus/MovieGifCreator" target="_blank" rel="noopener">Source code on GitHub</a>
+</footer>
+
+<dialog id="helpDialog">
+  <form method="dialog" class="dlg-close"><button class="link" aria-label="Close">✕</button></form>
+  <h2>How this works</h2>
+  <div class="help-body">
+    <section>
+      <h3>The short version</h3>
+      <ol>
+        <li><b>Choose a video.</b> Drop in any video file — a phone clip or a whole movie.</li>
+        <li><b>Pick the moment.</b> Play it, then press <i>Set start</i> and <i>Set end</i> around your quote.</li>
+        <li><b>Caption it.</b> <i>Auto-caption</i> listens to the clip and types out what’s said. Fix any mistakes, pick a style, and press <i>Make GIF</i>.</li>
+      </ol>
+      <p>You get a GIF and an MP4. Most messaging apps play the MP4 too — it’s smaller and sharper, so send that when you can.</p>
+    </section>
+    <section id="helpPrivacy">
+      <h3>Is my video uploaded anywhere?</h3>
+      <p class="for-browser">No. Everything happens inside this browser tab, on your computer. Your video, captions and GIFs are never sent to a server.</p>
+      <p class="for-server">No. You’re running the app on your own computer, and your videos stay in its <code>sessions/</code> folder.</p>
+    </section>
+    <section class="for-browser">
+      <h3>Why does the first GIF take longer?</h3>
+      <p>The first time you use it, your browser downloads the tools it needs: the video engine (about 30 MB) and a speech model for auto-captions (41–250 MB, depending on which one you pick in <i>Options</i>). They’re saved by your browser, so next time it starts right away.</p>
+      <p>Everything runs on your own computer, so a fast computer makes a real difference. A desktop or laptop with Chrome, Edge or Firefox works best; phones can struggle with long videos.</p>
+    </section>
+    <section class="for-browser">
+      <h3>Where are my videos and GIFs kept?</h3>
+      <p>In this browser’s storage on this computer — the “Your videos” list in step 1. They aren’t synced anywhere else, and clearing your browser’s site data deletes them, so <b>download the GIFs you want to keep</b>. You can delete videos you’re done with from the list to free up space.</p>
+    </section>
+    <section id="helpYoutube">
+      <h3>Can I use a YouTube link?</h3>
+      <p class="for-server">Yes — paste it into the box in step 1 and press <i>Get video</i>. Videos you’ve downloaded stay in your list, so you never have to download them twice.</p>
+      <div class="for-browser">
+        <p>Not on this website. Browsers aren’t allowed to download from YouTube, so this site can only work with video files you already have.</p>
+        <p>If you’re comfortable with a terminal, you can run the app on your own computer. That version can download straight from YouTube (using <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener">yt-dlp</a>):</p>
+        <pre><code>git clone https://github.com/Thulrus/MovieGifCreator.git
+cd MovieGifCreator
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+venv/bin/python app.py</code></pre>
+        <p>Then open <b>http://127.0.0.1:5050</b>. You’ll also need <a href="https://ffmpeg.org/download.html" target="_blank" rel="noopener">ffmpeg</a> installed. The full instructions are in the <a href="https://github.com/Thulrus/MovieGifCreator#readme" target="_blank" rel="noopener">README</a>.</p>
+      </div>
+    </section>
+    <section>
+      <h3>Tips</h3>
+      <ul>
+        <li>Keep clips short — 3 to 10 seconds makes a GIF that loads fast and fits in a text message.</li>
+        <li>If a GIF comes out too big, pick a smaller <i>Size</i> or <i>Smoothness</i>.</li>
+        <li>Your work saves automatically. Come back to a video from the list any time and your range, captions and style will still be there.</li>
+      </ul>
+    </section>
+  </div>
+</dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
