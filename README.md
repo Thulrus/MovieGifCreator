@@ -30,33 +30,36 @@ Then open **http://127.0.0.1:5050** in a browser.
 
 ## Using it
 
-1. **Get your video** — paste a YouTube URL and click Fetch, or switch to
-   the Upload tab for a local file (a screen-recording, a DVD rip,
-   whatever you've got). It can be a whole video, not just a pre-trimmed
-   clip — you mark the part you want next. Already grabbed this video
-   before? Click its thumbnail in the "Already downloaded" grid instead
-   of re-downloading it.
-2. **Pick the part you want** — drag the two handles on the timeline (or
-   nudge them with the ±0.1s/±1s buttons, or click "Mark Start"/"Mark End"
-   at the current playhead position) to set the range precisely. Click
-   "Preview Selection" to loop just that range before committing, then
-   "Cut Clip."
-3. **Auto-Caption** — transcribes the clip's audio with timing already
-   worked out.
-4. **Check the captions** — fix any word Whisper misheard. Text only;
-   timing is already correct.
-5. **Make GIF** — name it, pick a caption size and color, done. You get a
-   GIF and an MP4 — send the MP4 when the app supports it (smaller, better
-   quality); GIF as the universal fallback.
+1. **Get a video** — paste a YouTube link and press Fetch, click "Upload a
+   file", or drop a video file onto the box. It can be a whole movie, not
+   just a pre-trimmed clip. Downloads show live progress and resume where
+   they stopped if interrupted. Anything you've fetched before is in the
+   library below — click it to reuse it (fetching the same link again just
+   reopens it). Hover a library card to rename or delete it.
+2. **Pick the part you want** — drag the handles on the whole-video bar,
+   then fine-tune on the zoomed bar that appears around your selection.
+   You can also type times (`83.5` or `1:23.5`), nudge with the ±buttons,
+   or use the keyboard: <kbd>Space</kbd> play/pause, <kbd>I</kbd>/<kbd>O</kbd>
+   set start/end, <kbd>,</kbd>/<kbd>.</kbd> step a frame, <kbd>P</kbd> loop
+   the selection, <kbd>Enter</kbd> cut & continue.
+3. **Caption & export** — click Auto-caption (Whisper transcribes the
+   clip), fix any misheard words, drag captions on the timeline to adjust
+   timing, and style them (font, size, color, outline, top/bottom, ALL
+   CAPS) with a live preview. Then Make GIF. You get a GIF and an MP4 —
+   send the MP4 when the app supports it (smaller, better quality).
+
+Your work is saved automatically: refresh the page, or come back to a video
+from the library later, and your range, captions and style are still there.
+Every GIF made from a video is listed under it.
 
 ## Notes
 
-- Each session's files live in `sessions/<id>/` — safe to delete that
-  folder periodically to reclaim disk space (or run the "Clean: clear
-  session data" VS Code task).
-- If transcription is slow on your machine, swap `"small"` for `"base"`
-  in `app.py`'s `get_whisper_model()` — faster, slightly less accurate.
-  For short movie-quote clips the accuracy hit is usually negligible.
-- Caption styling (font, size, outline, position) is controlled in
-  `write_ass()` in `app.py` if you want to go beyond the size slider —
-  e.g. change the font, add a background box, move it to top-of-frame.
+- Each video's files live in `sessions/<id>/` (the original download,
+  a browser-friendly preview, the current clip, and your exports in
+  `exports/`). Delete videos you don't need from the library in the app.
+- The speech model can be picked next to the Auto-caption button: Tiny and
+  Base are much faster, Medium is the most accurate. Each downloads once on
+  first use.
+- To try things out without touching your library, run with
+  `DATA_DIR=/some/other/folder python app.py` (and `PORT=5051` to run it
+  alongside your normal copy).

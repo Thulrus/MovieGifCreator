@@ -10,7 +10,15 @@ Run it: `venv/bin/python app.py`, then open http://127.0.0.1:5050.
 
 - `app.py` — the whole backend (Flask routes, ffmpeg/yt-dlp/whisper calls).
 - `templates/index.html` — the single-page frontend.
-- `sessions/<id>/` — per-session data (see below). Gitignored.
+- `sessions/<id>/` — per-session data (see below). Gitignored. Key files:
+  `meta.json` (title, YouTube url/id, preview mode), `source/` (original),
+  `source.mp4` (browser preview), `clip.mp4` + `clip.json` (current cut and
+  its range), `state.json` (autosaved UI state: range, captions, style),
+  `exports/` (finished GIF/MP4s; older sessions have them at the top level).
+
+Slow operations (fetch, preview transcode, cut, transcribe, export) run as
+in-memory background jobs: the API returns a job id and the page polls
+`/api/jobs/<id>`. Jobs don't survive a server restart.
 
 ## Do not clear out `sessions/`
 
@@ -26,6 +34,7 @@ otherwise delete session folders unless the user gives a specific reason to
 (e.g. they explicitly ask to clear it, or a specific session is confirmed
 corrupt/broken). This includes during manual testing/debugging — if you need a
 throwaway session to test upload/fetch/export flows, use a separate directory
-(e.g. point `DATA_DIR` at something under `/tmp` for the test run, or clean up
+(e.g. `DATA_DIR=/tmp/... PORT=5051 venv/bin/python app.py` — both env vars
+are supported — or clean up
 only the one specific test session folder you created) rather than wiping
 `sessions/` wholesale.
