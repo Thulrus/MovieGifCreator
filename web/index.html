@@ -188,7 +188,7 @@
         </div>
       </div>
       <div class="side s3-side">
-        <div class="card">
+        <div class="card style-card">
           <h3>Caption style</h3>
           <div class="control">
             <label for="fontSel">Font</label>
@@ -213,39 +213,10 @@
             <label>Position</label>
             <div class="seg"><button type="button" id="posTop">Top</button><button type="button" id="posBottom" class="active">Bottom</button></div>
           </div>
-          <div class="control">
+          <div class="control control-caps">
             <label></label>
             <label class="check"><input type="checkbox" id="uppercase"> ALL CAPS</label>
           </div>
-        </div>
-        <div class="card">
-          <h3>Make the GIF</h3>
-          <div class="control">
-            <label for="clipName">File name</label>
-            <input type="text" id="clipName" autocomplete="off">
-          </div>
-          <div class="control">
-            <label for="outputWidth">Size</label>
-            <select id="outputWidth">
-              <option value="640">Large — 640px wide</option>
-              <option value="480">Medium — 480px</option>
-              <option value="360" selected>Standard — 360px</option>
-              <option value="240">Small — 240px</option>
-            </select>
-          </div>
-          <div class="control">
-            <label for="outputFps">Smoothness</label>
-            <select id="outputFps">
-              <option value="24">Smoothest (24 fps)</option>
-              <option value="20">Smooth (20 fps)</option>
-              <option value="15" selected>Standard (15 fps)</option>
-              <option value="12">Choppier (12 fps)</option>
-              <option value="10">Choppiest (10 fps)</option>
-            </select>
-          </div>
-          <p class="hint">Bigger and smoother means a bigger file. Standard is right for most chats.</p>
-          <button type="button" class="block big" id="makeBtn">🎉 Make GIF</button>
-          <div class="progress" id="makeProgress" hidden><div class="bar"><span></span></div><div class="msg"></div></div>
         </div>
       </div>
 
@@ -282,6 +253,37 @@
       </details>
 
       <div id="captionList"></div>
+    </div>
+    <div class="card s3-make">
+      <h3>Make the GIF</h3>
+      <div class="make-row">
+        <div class="control">
+          <label for="clipName">File name</label>
+          <input type="text" id="clipName" autocomplete="off">
+        </div>
+        <div class="control">
+          <label for="outputWidth">Size</label>
+          <select id="outputWidth">
+            <option value="640">Large — 640px wide</option>
+            <option value="480">Medium — 480px</option>
+            <option value="360" selected>Standard — 360px</option>
+            <option value="240">Small — 240px</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="outputFps">Smoothness</label>
+          <select id="outputFps">
+            <option value="24">Smoothest (24 fps)</option>
+            <option value="20">Smooth (20 fps)</option>
+            <option value="15" selected>Standard (15 fps)</option>
+            <option value="12">Choppier (12 fps)</option>
+            <option value="10">Choppiest (10 fps)</option>
+          </select>
+        </div>
+        <button type="button" class="big" id="makeBtn">🎉 Make GIF</button>
+      </div>
+      <p class="hint">Bigger and smoother means a bigger file. Standard is right for most chats.</p>
+      <div class="progress" id="makeProgress" hidden><div class="bar"><span></span></div><div class="msg"></div></div>
     </div>
     </div>
   </div>

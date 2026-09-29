@@ -724,21 +724,45 @@ dialog h2 { margin: 0 0 10px; font-size: 20px; }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 25%, transparent); } 100% { background: transparent; } }
 body.mode-browser .for-server, body.mode-server .for-browser { display: none; }
 
-/* Step 3: video + style side by side, captions full width below. On narrow
-   screens the captions come straight after the video, before the style. */
+/* Step 3: everything full width, top to bottom: caption style as a
+   toolbar, the video, the caption timeline straight under it, then "Make
+   the GIF". On narrow screens the style goes after the captions instead,
+   so the video stays near the top. */
 .s3-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  grid-template-areas: "video side" "caps caps";
-  gap: 0 20px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "side" "video" "caps" "make";
 }
 .s3-video { grid-area: video; }
 .s3-side { grid-area: side; }
 .s3-caps { grid-area: caps; }
+.s3-make { grid-area: make; margin-top: 20px; }
+.s3-side { margin-bottom: 16px; }
+.style-card { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 28px; }
+.style-card h3 { flex-basis: 100%; margin: 0; }
+.style-card .control { margin-bottom: 0; }
+.style-card .control > label:first-child { width: auto; }
+.style-card #fontSel { width: 180px; flex: none; }
+.style-card input[type=range] { width: 120px; flex: none; }
+.style-card .seg { flex: none; width: 150px; }
+.style-card .control-caps > label:first-child { display: none; }
+.make-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; margin-bottom: 10px; }
+.make-row .control { margin-bottom: 0; flex: 1 1 220px; }
+.make-row .control > label:first-child { width: auto; }
+.make-row #makeBtn { flex: 0 0 auto; margin-left: auto; }
+.s3-make .hint { margin: 0; }
 @media (max-width: 900px) {
-  .s3-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "video" "caps" "side"; }
-  .s3-side { margin-top: 20px; }
+  .s3-grid { grid-template-areas: "video" "caps" "side" "make"; }
+  .s3-side { margin: 20px 0 0; }
+  .style-card { display: block; }
+  .style-card h3 { margin-bottom: 10px; }
+  .style-card .control { margin-bottom: 12px; }
+  .style-card .control > label:first-child { width: 70px; }
+  .style-card .control-caps > label:first-child { display: block; }
+  .style-card #fontSel, .style-card .seg { flex: 1; width: auto; }
+  .style-card input[type=range] { width: auto; flex: 1; }
+  .make-row .control > label:first-child { width: 80px; }
+  .make-row #makeBtn { flex-basis: 100%; }
 }
 .cap-empty span { padding: 0 12px; text-align: center; }
 @media (max-width: 600px) {
