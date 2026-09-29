@@ -4,12 +4,20 @@
 
 import { wordsToCaptions } from './captions.js';
 
+// (The "base" model was offered too, but its compressed build gets word
+// timings badly wrong — every word at the same time, past the end of the
+// clip — and drops sentences, so it's gone. It stays in RETIRED_MODELS so a
+// copy someone already downloaded still shows up in the storage panel.)
 export const MODELS = [
-  { name: 'tiny', label: 'Tiny — fastest, least accurate', size: '41 MB' },
-  { name: 'base', label: 'Base — good balance', size: '77 MB' },
-  { name: 'small', label: 'Small — most accurate, slower', size: '250 MB' },
+  { name: 'small', label: 'Small — most accurate', size: '250 MB' },
+  { name: 'tiny', label: 'Tiny — quicker, less accurate', size: '41 MB' },
 ];
-export const DEFAULT_MODEL = 'base';
+export const RETIRED_MODELS = [{ name: 'base', label: 'Base (no longer used)' }];
+// Small is worth its download on a computer; on a phone the download and the
+// slower processing hurt more, so start with Tiny there.
+const onPhone = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+  && matchMedia('(max-width: 900px)').matches;
+export const DEFAULT_MODEL = onPhone ? 'tiny' : 'small';
 // What the clip's speech is in. The in-browser Whisper can't detect it by
 // itself (it just assumes English), so it's picked in the caption options.
 export const LANGUAGES = [
@@ -67,7 +75,7 @@ export async function modelCacheSizes() {
     for (const r of await cache.keys()) {
       const res = await cache.match(r);
       const bytes = Number(res.headers.get('Content-Length')) || (await res.blob()).size;
-      const m = MODELS.find(x => r.url.includes(modelRepo(x.name)));
+      const m = [...MODELS, ...RETIRED_MODELS].find(x => r.url.includes(modelRepo(x.name)));
       if (m) sizes.set(m.name, (sizes.get(m.name) || 0) + bytes);
       else other += bytes;
     }
@@ -116,11 +124,42 @@ export async function transcribe(samples, { model, language, maxChars, clipLen }
       onProgress({ progress: null, message: 'Listening to the clip… (this can take a little while)' });
     }
   });
-  const words = result.chunks
-    .filter(c => c.text.trim() && c.start != null)
-    .map(c => ({ text: c.text, start: Math.max(0, c.start), end: Math.min(clipLen || Infinity, c.end ?? c.start + 0.3) }));
+  const len = clipLen || samples.length / 16000;
+  let words = result.chunks
+    .filter(c => c.text.trim())
+    .map(c => ({ text: c.text, start: c.start, end: c.end }));
+  const approximate = timingsLookWrong(words, len);
+  words = approximate ? spreadEvenly(words, len) : words.map(w => {
+    const start = Math.min(Math.max(0, w.start), Math.max(0, len - 0.1));
+    return { text: w.text, start, end: Math.min(len, Math.max(start + 0.05, w.end ?? start + 0.3)) };
+  });
   return {
     segments: wordsToCaptions(words, maxChars),
-    words: words.map(w => ({ start: Math.round(w.start * 100) / 100, end: Math.round(w.end * 100) / 100 })),
+    // Word boundaries are only useful as snap points when they're real.
+    words: approximate ? [] : words.map(w => ({ start: Math.round(w.start * 100) / 100, end: Math.round(w.end * 100) / 100 })),
+    approximate,
   };
+}
+
+// Whisper's word timings occasionally come out as nonsense: every word
+// stamped with the same time, or times past the end of the clip.
+function timingsLookWrong(words, len) {
+  if (!words.length) return false;
+  if (words.some(w => w.start == null || !isFinite(w.start) || w.start > len + 0.5)) return true;
+  if (words.length < 4) return false;
+  const distinct = new Set(words.map(w => w.start.toFixed(1))).size;
+  return distinct < words.length * 0.35;
+}
+
+// Fallback timing: share the clip out between the words by their length, so
+// the captions at least come out as sensible phrases in the right order.
+function spreadEvenly(words, len) {
+  const total = words.reduce((n, w) => n + w.text.trim().length + 1, 0) || 1;
+  let t = 0;
+  return words.map(w => {
+    const d = ((w.text.trim().length + 1) / total) * len;
+    const word = { text: w.text, start: t, end: t + d };
+    t += d;
+    return word;
+  });
 }

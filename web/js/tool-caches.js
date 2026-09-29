@@ -4,13 +4,14 @@
 // can use them too, e.g. for captions when the server has no Whisper).
 
 import { engineCacheSize, clearEngineCache } from './media.js';
-import { MODELS, modelCacheSizes, clearModel, clearAllModels } from './speech.js';
+import { MODELS, RETIRED_MODELS, modelCacheSizes, clearModel, clearAllModels } from './speech.js';
 
 export async function toolInventory() {
   const [engine, { sizes, other }] = await Promise.all([engineCacheSize(), modelCacheSizes()]);
   return {
     engine,
-    models: MODELS.filter(m => sizes.has(m.name)).map(m => ({ name: m.name, label: m.label, bytes: sizes.get(m.name) })),
+    models: [...MODELS, ...RETIRED_MODELS].filter(m => sizes.has(m.name))
+      .map(m => ({ name: m.name, label: m.label, retired: RETIRED_MODELS.includes(m), bytes: sizes.get(m.name) })),
     modelOther: other,
   };
 }

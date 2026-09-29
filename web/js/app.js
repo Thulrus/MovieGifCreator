@@ -1414,7 +1414,9 @@ $('transcribeBtn').addEventListener('click', async () => {
     addCaptionAt(0);
     return;
   }
-  showStatus($('transcribeProgress'), `✓ Found ${r.segments.length} caption${r.segments.length === 1 ? '' : 's'}. Play the clip and fix any misheard words below.`, 'ok');
+  showStatus($('transcribeProgress'), r.approximate
+    ? `✓ Found ${r.segments.length} caption${r.segments.length === 1 ? '' : 's'}, but the speech model couldn’t tell exactly when each one is said — play the clip and drag them into place on the timeline.`
+    : `✓ Found ${r.segments.length} caption${r.segments.length === 1 ? '' : 's'}. Play the clip and fix any misheard words below.`, 'ok');
   setCaptions(r.segments);
 });
 
@@ -1692,8 +1694,10 @@ async function renderStoragePanel() {
   const usesBrowserSpeech = browser || backend.hasWhisper === false;
   if (inv.models.length) {
     inv.models.forEach(m => rows.push(storageRow({
-      title: `Speech model: ${m.name[0].toUpperCase() + m.name.slice(1)}`,
-      desc: 'Writes the auto-captions. If you remove it, it downloads again the next time you use Auto-caption with it.',
+      title: `Speech model: ${m.name[0].toUpperCase() + m.name.slice(1)}${m.retired ? ' (no longer used)' : ''}`,
+      desc: m.retired
+        ? 'An older model this page used to offer. It isn’t used any more, so it’s safe to remove.'
+        : 'Writes the auto-captions. If you remove it, it downloads again the next time you use Auto-caption with it.',
       size: fmtSize(m.bytes),
       button: 'Remove',
       onClick: async () => {

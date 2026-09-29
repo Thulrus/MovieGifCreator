@@ -20,7 +20,8 @@ export function wordsToCaptions(words, maxChars) {
   let cur = [];
   tokens.forEach((w, i) => {
     const prev = tokens[i - 1];
-    if (cur.length && prev && (w.start - prev.end > 0.8 || /[.?!…]["')\]]*$/.test(prev.text))) {
+    // A pause, or the end of a sentence (a "- " starts a new speaker, too).
+    if (cur.length && prev && (w.start - prev.end > 0.8 || /[.?!…]["')\]]*$/.test(prev.text) || /^[-–—]\s/.test(w.text))) {
       phrases.push(cur);
       cur = [];
     }
@@ -47,7 +48,8 @@ export function wordsToCaptions(words, maxChars) {
   return captions.map(c => ({
     start: round2(c[0].start),
     end: round2(Math.max(c[c.length - 1].end, c[0].start + 0.1)),
-    text: c.map(w => w.text).join(' '),
+    // Whisper marks a change of speaker with "- ", which looks odd on a GIF.
+    text: c.map(w => w.text).join(' ').replace(/^[-–—]\s+/, ''),
   }));
 }
 
