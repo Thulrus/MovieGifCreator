@@ -504,9 +504,11 @@ export const browserBackend = {
     await media.writeText('/work/captions.ass', buildAss(captions, style));
 
     // Scale down while burning in, so both the MP4 and the GIF made from it are smaller.
+    // Non-square (anamorphic) pixels are stretched out first: GIFs have no
+    // pixel-aspect flag, so they'd otherwise come out squeezed.
     const burned = (await media.run({
       inputs: { clip }, duration, span: [0, 0.6], onProgress, message: 'Burning in the captions…',
-      args: ['-i', '{in:clip}', '-vf', `ass=/work/captions.ass:fontsdir=/fonts,scale=${width}:-2:flags=lanczos`,
+      args: ['-i', '{in:clip}', '-vf', `scale=trunc(iw*sar/2)*2:ih,setsar=1,ass=/work/captions.ass:fontsdir=/fonts,scale=${width}:-2:flags=lanczos`,
         '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '/work/burned.mp4'],
       outputs: [['/work/burned.mp4', 'video/mp4']],

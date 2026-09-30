@@ -949,6 +949,11 @@ def clamp_int(value, default, lo, hi):
         return default
 
 
+# Stretch non-square pixels (anamorphic video, e.g. DVD rips) out to their
+# display shape. A no-op for ordinary video.
+SQUARE_PIXELS = "scale=trunc(iw*sar/2)*2:ih,setsar=1"
+
+
 def export_job(job: Job, d: Path, name: str, captions: list, style: dict, width: int, fps: int):
     clip = d / "clip.mp4"
     out_dir = d / "exports"
@@ -960,9 +965,11 @@ def export_job(job: Job, d: Path, name: str, captions: list, style: dict, width:
     # Scale down at the burn-in step so both the MP4 and the GIF derived
     # from it come out smaller. ffmpeg runs from the session folder so the
     # ass filter gets a plain relative filename (no path escaping needed).
+    # SQUARE_PIXELS comes first: GIFs have no pixel-aspect flag, so an
+    # anamorphic source would otherwise come out squeezed.
     job.update(progress=0, message="Burning in captions…")
     burned = d / "burned.mp4"
-    ffmpeg(["-i", clip, "-vf", f"{ass_filter('captions.ass')},scale={width}:-2:flags=lanczos",
+    ffmpeg(["-i", clip, "-vf", f"{SQUARE_PIXELS},{ass_filter('captions.ass')},scale={width}:-2:flags=lanczos",
             "-c:v", "libx264", "-crf", "23", "-preset", "medium", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", burned],
            job, duration, (0, 0.55), cwd=d)
