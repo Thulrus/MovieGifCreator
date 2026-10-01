@@ -12,6 +12,26 @@ import * as speech from './speech.js';
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
+// The optional crop box: fractions (0-1) of the displayed frame. Anything
+// malformed, or a box covering (nearly) the whole frame, means no crop.
+// Mirrors parse_crop() / crop_filter() in app.py.
+function parseCrop(c) {
+  if (!c || typeof c !== 'object') return null;
+  let [x, y, w, h] = ['x', 'y', 'w', 'h'].map(k => Number(c[k]));
+  if (![x, y, w, h].every(Number.isFinite)) return null;
+  w = Math.min(1, Math.max(0.02, w));
+  h = Math.min(1, Math.max(0.02, h));
+  x = Math.min(1 - w, Math.max(0, x));
+  y = Math.min(1 - h, Math.max(0, y));
+  if (w > 0.999 && h > 0.999) return null;
+  return { x, y, w, h };
+}
+// Width and height are kept even for H.264.
+function cropFilter(c) {
+  const f = v => v.toFixed(5);
+  return `crop=round(iw*${f(c.w)}/2)*2:round(ih*${f(c.h)}/2)*2:trunc(iw*${f(c.x)}):trunc(ih*${f(c.y)})`;
+}
+
 let fontsCfg = null;
 // The original video files, used straight from wherever the user picked them
 // (copying a whole movie into browser storage is slow, especially on phones).
@@ -498,17 +518,23 @@ export const browserBackend = {
       .map(c => ({ start: Number(c.start), end: Number(c.end), text: String(c.text || '') }))
       .filter(c => c.text.trim() && c.end > c.start);
 
+    const crop = parseCrop(data.crop);
+
     const clip = await files.get(id, 'clip');
     const duration = p.clip.end - p.clip.start;
+    const info = await media.probe(clip);
+    let aspect = info.width && info.height ? (info.width * info.sar) / info.height : 16 / 9;
+    if (crop) aspect *= crop.w / crop.h;
     await media.ensureFonts(fontsCfg.fonts);
-    await media.writeText('/work/captions.ass', buildAss(captions, style));
+    await media.writeText('/work/captions.ass', buildAss(captions, style, aspect));
 
     // Scale down while burning in, so both the MP4 and the GIF made from it are smaller.
     // Non-square (anamorphic) pixels are stretched out first: GIFs have no
-    // pixel-aspect flag, so they'd otherwise come out squeezed.
+    // pixel-aspect flag, so they'd otherwise come out squeezed. Then the
+    // optional crop, before the captions so they land inside it.
     const burned = (await media.run({
       inputs: { clip }, duration, span: [0, 0.6], onProgress, message: 'Burning in the captions…',
-      args: ['-i', '{in:clip}', '-vf', `scale=trunc(iw*sar/2)*2:ih,setsar=1,ass=/work/captions.ass:fontsdir=/fonts,scale=${width}:-2:flags=lanczos`,
+      args: ['-i', '{in:clip}', '-vf', `scale=trunc(iw*sar/2)*2:ih,setsar=1,${crop ? cropFilter(crop) + ',' : ''}ass=/work/captions.ass:fontsdir=/fonts,scale=${width}:-2:flags=lanczos`,
         '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '/work/burned.mp4'],
       outputs: [['/work/burned.mp4', 'video/mp4']],

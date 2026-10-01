@@ -3,8 +3,20 @@
 // These mirror split_segment() and write_ass() in app.py so both engines
 // produce the same captions and the same look.
 
-// Must match the live preview (ASS_RES_X/Y and ASS_MARGIN in app.js).
-export const PLAY_RES_X = 480, PLAY_RES_Y = 270, MARGIN = 20;
+// Must match the live preview (renderOverlay in app.js).
+export const MARGIN = 20;
+
+// The caption script's coordinate space for a frame of the given shape
+// (width / height). Captions are laid out on a 480x270 box fitted inside the
+// frame: 16:9 and wider frames size text by their height, narrower ones
+// (4:3, square, portrait crops) by their width, so text never outgrows the
+// frame. Mirrors play_res() in app.py.
+export function playRes(aspect) {
+  if (!(aspect > 0)) aspect = 16 / 9;
+  return aspect >= 16 / 9
+    ? { x: Math.round(270 * aspect), y: 270 }
+    : { x: 480, y: Math.round(480 / aspect) };
+}
 
 const round2 = t => Math.round(t * 100) / 100;
 
@@ -65,7 +77,8 @@ function assColor(hex) {
   return `&H00${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`.toUpperCase();
 }
 
-export function buildAss(captions, style) {
+export function buildAss(captions, style, aspect) {
+  const res = playRes(aspect);
   const alignment = style.position === 'top' ? 8 : 2;
   const shadow = style.outline ? 1 : 0;
   const lines = [
@@ -73,8 +86,8 @@ export function buildAss(captions, style) {
     'ScriptType: v4.00+',
     // Outlines scale with the video like the text does.
     'ScaledBorderAndShadow: yes',
-    `PlayResX: ${PLAY_RES_X}`,
-    `PlayResY: ${PLAY_RES_Y}`,
+    `PlayResX: ${res.x}`,
+    `PlayResY: ${res.y}`,
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',

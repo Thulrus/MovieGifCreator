@@ -29,6 +29,7 @@ than ./sessions (handy for a throwaway test run).
 
 import importlib.util
 import json
+import math
 import os
 import re
 import shutil
@@ -310,18 +311,32 @@ def ass_color(hex_color: str) -> str:
     return f"&H00{b}{g}{r}".upper()
 
 
-def write_ass(path: Path, captions: list, style: dict):
+def play_res(aspect: float) -> tuple[int, int]:
+    """The caption script's coordinate space for a frame of the given shape
+    (width / height). Captions are laid out on a 480x270 box fitted inside the
+    frame: 16:9 and wider frames size text by their height, narrower ones
+    (4:3, square, portrait crops) by their width, so text never outgrows the
+    frame. Mirrors playRes() in web/js/captions.js."""
+    if not aspect > 0:
+        aspect = 16 / 9
+    if aspect >= 16 / 9:
+        return round(270 * aspect), 270
+    return 480, round(480 / aspect)
+
+
+def write_ass(path: Path, captions: list, style: dict, aspect: float):
     # ScaledBorderAndShadow makes the outline scale with the video like the
     # text does, instead of being N real pixels at the source resolution
     # (which made outlines on HD sources nearly vanish once scaled down).
     alignment = 8 if style["position"] == "top" else 2
     outline = style["outline"]
     shadow = 1 if outline else 0
+    res_x, res_y = play_res(aspect)
     header = f"""[Script Info]
 ScriptType: v4.00+
 ScaledBorderAndShadow: yes
-PlayResX: 480
-PlayResY: 270
+PlayResX: {res_x}
+PlayResY: {res_y}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
@@ -954,13 +969,59 @@ def clamp_int(value, default, lo, hi):
 SQUARE_PIXELS = "scale=trunc(iw*sar/2)*2:ih,setsar=1"
 
 
-def export_job(job: Job, d: Path, name: str, captions: list, style: dict, width: int, fps: int):
+def parse_crop(value) -> dict | None:
+    """The optional crop box: fractions (0-1) of the displayed frame. Anything
+    malformed, or a box covering (nearly) the whole frame, means no crop."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        x, y, w, h = (float(value[k]) for k in ("x", "y", "w", "h"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) for v in (x, y, w, h)):
+        return None
+    w, h = min(1.0, max(0.02, w)), min(1.0, max(0.02, h))
+    x, y = min(1.0 - w, max(0.0, x)), min(1.0 - h, max(0.0, y))
+    if w > 0.999 and h > 0.999:
+        return None
+    return {"x": x, "y": y, "w": w, "h": h}
+
+
+def crop_filter(crop: dict) -> str:
+    """ffmpeg crop for a fractional box, applied after SQUARE_PIXELS (so the
+    fractions are of the frame as displayed). Width and height are kept even
+    for H.264."""
+    return (f"crop=round(iw*{crop['w']:.5f}/2)*2:round(ih*{crop['h']:.5f}/2)*2"
+            f":trunc(iw*{crop['x']:.5f}):trunc(ih*{crop['y']:.5f})")
+
+
+def display_aspect(stream: dict | None) -> float:
+    """Width / height of a video stream as displayed (pixel aspect applied)."""
+    try:
+        aspect = int(stream["width"]) / int(stream["height"])
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        return 16 / 9
+    try:
+        num, den = (int(v) for v in str(stream.get("sample_aspect_ratio", "")).split(":"))
+        if num > 0 and den > 0:
+            aspect *= num / den
+    except ValueError:
+        pass
+    return aspect
+
+
+def export_job(job: Job, d: Path, name: str, captions: list, style: dict, width: int, fps: int,
+               crop: dict | None):
     clip = d / "clip.mp4"
     out_dir = d / "exports"
     out_dir.mkdir(exist_ok=True)
+    info = probe(clip)
+    aspect = display_aspect(first_stream(info, "video"))
+    if crop:
+        aspect *= crop["w"] / crop["h"]
     ass = d / "captions.ass"
-    write_ass(ass, captions, style)
-    duration = media_duration(probe(clip)) or None
+    write_ass(ass, captions, style, aspect)
+    duration = media_duration(info) or None
 
     # Scale down at the burn-in step so both the MP4 and the GIF derived
     # from it come out smaller. ffmpeg runs from the session folder so the
@@ -969,7 +1030,8 @@ def export_job(job: Job, d: Path, name: str, captions: list, style: dict, width:
     # anamorphic source would otherwise come out squeezed.
     job.update(progress=0, message="Burning in captions…")
     burned = d / "burned.mp4"
-    ffmpeg(["-i", clip, "-vf", f"{SQUARE_PIXELS},{ass_filter('captions.ass')},scale={width}:-2:flags=lanczos",
+    crop_step = f"{crop_filter(crop)}," if crop else ""
+    ffmpeg(["-i", clip, "-vf", f"{SQUARE_PIXELS},{crop_step}{ass_filter('captions.ass')},scale={width}:-2:flags=lanczos",
             "-c:v", "libx264", "-crf", "23", "-preset", "medium", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", burned],
            job, duration, (0, 0.55), cwd=d)
@@ -1029,7 +1091,8 @@ def export():
     width = clamp_int(data.get("width"), 360, 120, 1280)
     width -= width % 2
     fps = clamp_int(data.get("fps"), 15, 5, 30)
-    job = start_job("export", d.name, export_job, d, name, captions, style, width, fps)
+    crop = parse_crop(data.get("crop"))
+    job = start_job("export", d.name, export_job, d, name, captions, style, width, fps, crop)
     return jsonify(job=job.id)
 
 

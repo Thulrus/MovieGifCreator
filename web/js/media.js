@@ -174,7 +174,7 @@ export async function probe(blob, onProgress) {
 // Pulls the basics out of ffmpeg's description of its first input.
 export function parseInfo(log) {
   const text = log.join('\n');
-  const info = { duration: null, fps: null, video: null, audio: null, width: null, height: null, pixFmt: null };
+  const info = { duration: null, fps: null, video: null, audio: null, width: null, height: null, sar: 1, pixFmt: null };
   const d = text.match(/Duration: (\d+):(\d+):([\d.]+)/);
   if (d) info.duration = Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]);
   const v = text.match(/Stream #\d+:\d+[^:]*: Video: (\w+)([^\n]*)/);
@@ -182,6 +182,8 @@ export function parseInfo(log) {
     info.video = v[1];
     const size = v[2].match(/ (\d{2,5})x(\d{2,5})/);
     if (size) { info.width = Number(size[1]); info.height = Number(size[2]); }
+    const sar = v[2].match(/\[SAR (\d+):(\d+)/);
+    if (sar && Number(sar[1]) > 0 && Number(sar[2]) > 0) info.sar = Number(sar[1]) / Number(sar[2]);
     const fps = v[2].match(/([\d.]+) fps/);
     if (fps && Number(fps[1]) >= 1 && Number(fps[1]) <= 240) info.fps = Math.round(Number(fps[1]) * 1000) / 1000;
     const pf = v[2].match(/, (yuv\w+|rgb\w+|gray\w*|nv12)/);

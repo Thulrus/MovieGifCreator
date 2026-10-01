@@ -35,7 +35,7 @@ It runs two ways from the same front end (`web/`):
   Gitignored. Key files: `meta.json` (title, YouTube url/id, preview mode),
   `source/` (original), `source.mp4` (browser preview), `clip.mp4` +
   `clip.json` (current cut and its range), `state.json` (autosaved UI state:
-  range, captions, style), `exports/` (finished GIF/MP4s; older sessions
+  range, captions, style, crop), `exports/` (finished GIF/MP4s; older sessions
   have them at the top level).
 
 On the server, slow operations (fetch, preview transcode, cut, transcribe,

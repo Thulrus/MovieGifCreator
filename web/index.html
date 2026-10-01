@@ -180,11 +180,32 @@
       <div class="s3-video">
         <div class="video-wrap">
           <video id="clipPlayer" preload="auto" playsinline></video>
+          <div class="crop-layer" id="cropLayer" hidden>
+            <div class="crop-box" id="cropBox">
+              <span class="crop-h" data-h="nw"></span><span class="crop-h" data-h="n"></span><span class="crop-h" data-h="ne"></span>
+              <span class="crop-h" data-h="w"></span><span class="crop-h" data-h="e"></span>
+              <span class="crop-h" data-h="sw"></span><span class="crop-h" data-h="s"></span><span class="crop-h" data-h="se"></span>
+            </div>
+          </div>
           <div class="cap-overlay" id="capOverlay"></div>
         </div>
         <div class="clip-controls">
           <button type="button" class="secondary small" id="clipPlayBtn">► Play</button>
           <span class="clip-time" id="clipTime">0.00s / 0.00s</span>
+          <button type="button" class="secondary small crop-toggle" id="cropToggle" aria-expanded="false" title="Crop the GIF to a square, portrait or any shape">✂ Crop</button>
+        </div>
+        <div class="crop-tools" id="cropTools" hidden>
+          <div class="seg crop-aspects" id="cropAspects">
+            <button type="button" data-aspect="none">None</button>
+            <button type="button" data-aspect="free">Free</button>
+            <button type="button" data-aspect="1:1">1:1</button>
+            <button type="button" data-aspect="4:5">4:5</button>
+            <button type="button" data-aspect="9:16">9:16</button>
+            <button type="button" data-aspect="4:3">4:3</button>
+            <button type="button" data-aspect="16:9">16:9</button>
+          </div>
+          <button type="button" class="small" id="cropDone">Done</button>
+          <p class="hint">Drag the box to move it, or its corners to resize. Drag outside it to draw a new one. The GIF keeps only what’s inside.</p>
         </div>
       </div>
       <div class="side s3-side">

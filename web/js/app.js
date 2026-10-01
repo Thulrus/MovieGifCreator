@@ -7,7 +7,7 @@
 // local server is available.
 
 import { serverBackend } from './backend-server.js';
-import { PLAY_RES_X as ASS_RES_X, PLAY_RES_Y as ASS_RES_Y, MARGIN as ASS_MARGIN } from './captions.js';
+import { playRes, MARGIN as ASS_MARGIN } from './captions.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -165,6 +165,7 @@ function collectState() {
     captions: captions.map(({ start, end, text }) => ({ start, end, text })),
     words,
     style: getStyle(),
+    crop,
     output: getOutput(),
     name: $('clipName').value,
     maxChars: Number($('maxCaptionChars').value),
@@ -439,6 +440,8 @@ async function openSession(sid) {
 
   applyStyle({ ...defaultStyle(), ...recall('style'), ...(st.style || {}) });
   applyOutput({ ...recall('output'), ...(st.output || {}) });
+  setCropEditing(false);
+  setCrop(validCrop(st.crop));
   $('clipName').value = st.name || '';
   if (st.maxChars) { $('maxCaptionChars').value = st.maxChars; $('maxCaptionCharsVal').textContent = st.maxChars; }
   if (st.model && cfg.models.some(m => m.name === st.model)) $('modelSel').value = st.model;
@@ -482,6 +485,8 @@ async function openSession(sid) {
 
 function closeSession() {
   sessionId = session = clipRange = null;
+  setCropEditing(false);
+  setCrop(null);
   $('player').removeAttribute('src');
   $('clipPlayer').removeAttribute('src');
   setCaptions([]);
@@ -823,6 +828,7 @@ let words = [];     // Whisper word boundaries, used as snap points
 let nextCapId = 1;
 let selectedCapId = null;
 let clipDur = 0;
+let crop = null;    // optional crop box, see "Crop" below
 
 const CAP_COLORS = ['#5b8cff', '#f59e0b', '#4ade80', '#f472b6', '#a78bfa', '#22d3ee'];
 const LANE_H = 30;
@@ -1252,6 +1258,18 @@ $('clipPlayer').addEventListener('play', () => { $('clipPlayBtn').textContent = 
 ['pause', 'ended'].forEach(ev => $('clipPlayer').addEventListener(ev, () => { $('clipPlayBtn').textContent = '► Play'; }));
 
 let overlayKey = '';
+// The video is letterboxed inside its element (max-height), so the overlays
+// line up with the actual picture rather than the element's box.
+function pictureRect() {
+  const player = $('clipPlayer');
+  const boxW = player.clientWidth, boxH = player.clientHeight;
+  if (!boxH) return null;
+  const vw = player.videoWidth || 16, vh = player.videoHeight || 9;
+  const scale = Math.min(boxW / vw, boxH / vh);
+  const w = vw * scale, h = vh * scale;
+  return { left: (boxW - w) / 2, top: (boxH - h) / 2, w, h };
+}
+
 function renderOverlay(force = false) {
   const player = $('clipPlayer');
   const t = player.currentTime;
@@ -1262,18 +1280,20 @@ function renderOverlay(force = false) {
   overlayKey = key;
 
   const overlay = $('capOverlay');
-  const boxW = player.clientWidth, boxH = player.clientHeight;
-  if (!boxH) return;
-  // The video is letterboxed inside its element (max-height), so line the
-  // overlay up with the actual picture rather than the element's box.
-  const vw = player.videoWidth || 16, vh = player.videoHeight || 9;
-  const scale = Math.min(boxW / vw, boxH / vh);
-  const w = vw * scale, h = vh * scale;
-  Object.assign(overlay.style, {
-    left: (boxW - w) / 2 + 'px', top: (boxH - h) / 2 + 'px', width: w + 'px', height: h + 'px',
-  });
+  const pic = pictureRect();
+  if (!pic) return;
+  // Captions are burned into the cropped frame, so they sit inside the crop box.
+  let { left: ox, top: oy, w, h } = pic;
+  if (crop) {
+    ox += crop.x * w;
+    oy += crop.y * h;
+    w *= crop.w;
+    h *= crop.h;
+  }
+  Object.assign(overlay.style, { left: ox + 'px', top: oy + 'px', width: w + 'px', height: h + 'px' });
 
-  const sy = h / ASS_RES_Y, sx = w / ASS_RES_X;
+  const res = playRes(w / h);
+  const sy = h / res.y, sx = w / res.x;
   const font = cfg.fonts.find(f => f.family === style.font) || { family: style.font, em: 1.164 };
   // ScaledBorderAndShadow is on in the export, so the outline scales with the script like the text.
   const outline = style.outline * sy, shadow = (style.outline ? 1 : 0) * sy;
@@ -1317,9 +1337,182 @@ $('clipPlayer').addEventListener('loadedmetadata', () => {
   renderWordTicks();
   renderTrack();
   updatePlayhead();
-  renderOverlay(true);
+  renderCrop();
 });
-new ResizeObserver(() => renderOverlay(true)).observe($('clipPlayer'));
+new ResizeObserver(renderCrop).observe($('clipPlayer'));
+
+// --- Crop (optional) ---
+// `crop` is null (the whole frame) or { aspect, x, y, w, h }: the box as
+// fractions of the picture as displayed, so it survives recutting the clip.
+// aspect is 'free' or 'W:H'. The box is drawn over the preview; the export
+// crops to it before burning in the captions.
+const MIN_CROP = 0.05;
+let cropEditing = false;
+
+function validCrop(c) {
+  if (!c || typeof c !== 'object') return null;
+  const [x, y, w, h] = ['x', 'y', 'w', 'h'].map(k => Number(c[k]));
+  if (![x, y, w, h].every(Number.isFinite) || w < 0.02 || h < 0.02) return null;
+  const aspect = c.aspect === 'free' || /^\d+:\d+$/.test(c.aspect) ? c.aspect : 'free';
+  return { aspect, x: clamp(x, 0, 1 - w), y: clamp(y, 0, 1 - h), w: Math.min(1, w), h: Math.min(1, h) };
+}
+
+// A W:H aspect as a width / height ratio of the box in fraction units
+// (a 1:1 box on a 16:9 picture is 9/16 as wide, as a fraction, as it is tall).
+function cropRatio(aspect) {
+  const m = /^(\d+):(\d+)$/.exec(aspect || '');
+  if (!m) return null;
+  const player = $('clipPlayer');
+  const vw = player.videoWidth || 16, vh = player.videoHeight || 9;
+  return (Number(m[1]) / Number(m[2])) * (vh / vw);
+}
+
+function setCrop(c) {
+  crop = c;
+  renderCrop();
+}
+function cropChanged() {
+  renderCrop();
+  scheduleSave();
+}
+
+function renderCrop() {
+  const layer = $('cropLayer');
+  const pic = pictureRect();
+  layer.hidden = !pic || (!crop && !cropEditing);
+  if (pic) {
+    Object.assign(layer.style, { left: pic.left + 'px', top: pic.top + 'px', width: pic.w + 'px', height: pic.h + 'px' });
+  }
+  const box = $('cropBox');
+  box.hidden = !crop;
+  if (crop) {
+    Object.assign(box.style, {
+      left: crop.x * 100 + '%', top: crop.y * 100 + '%', width: crop.w * 100 + '%', height: crop.h * 100 + '%',
+    });
+  }
+  layer.classList.toggle('editing', cropEditing);
+  layer.classList.toggle('locked', !!(crop && cropRatio(crop.aspect)));
+  const aspect = crop ? crop.aspect : 'none';
+  $('cropAspects').querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.aspect === aspect));
+  $('cropToggle').textContent = crop ? `✂ Crop: ${crop.aspect === 'free' ? 'custom' : crop.aspect}` : '✂ Crop / reshape';
+  $('cropToggle').classList.toggle('on', !!crop);
+  renderOverlay(true);
+}
+
+function setCropEditing(on) {
+  cropEditing = on;
+  $('cropTools').hidden = !on;
+  $('cropToggle').setAttribute('aria-expanded', String(on));
+  renderCrop();
+}
+$('cropToggle').addEventListener('click', () => {
+  // Opening it with nothing set starts from a square, the usual reason to crop.
+  if (!cropEditing && !crop) setAspect('1:1');
+  setCropEditing(!cropEditing);
+});
+$('cropDone').addEventListener('click', () => setCropEditing(false));
+
+// Picking a shape makes the biggest box of that shape that fits, centred
+// where the current box is.
+function setAspect(aspect) {
+  if (aspect === 'none') { setCrop(null); scheduleSave(); return; }
+  const cx = crop ? crop.x + crop.w / 2 : 0.5, cy = crop ? crop.y + crop.h / 2 : 0.5;
+  const r = cropRatio(aspect);
+  let w, h;
+  if (r) {
+    if (r >= 1) { w = 1; h = 1 / r; } else { w = r; h = 1; }
+  } else if (crop) {
+    ({ w, h } = crop);
+  } else {
+    w = h = 0.8;
+  }
+  crop = { aspect, w, h, x: clamp(cx - w / 2, 0, 1 - w), y: clamp(cy - h / 2, 0, 1 - h) };
+  cropChanged();
+}
+$('cropAspects').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b) setAspect(b.dataset.aspect);
+});
+
+// A box stretched from a fixed corner (ax, ay) to the pointer (px, py),
+// kept to ratio r (fraction units) if the shape is locked.
+function boxFromCorner(ax, ay, px, py, r) {
+  const sx = px >= ax ? 1 : -1, sy = py >= ay ? 1 : -1;
+  const maxW = sx > 0 ? 1 - ax : ax, maxH = sy > 0 ? 1 - ay : ay;
+  let w = Math.max(Math.abs(px - ax), MIN_CROP), h = Math.max(Math.abs(py - ay), MIN_CROP);
+  if (r) {
+    w = Math.max(w, h * r);
+    h = w / r;
+    if (w > maxW) { w = maxW; h = w / r; }
+    if (h > maxH) { h = maxH; w = h * r; }
+  } else {
+    w = Math.min(w, maxW);
+    h = Math.min(h, maxH);
+  }
+  return { x: sx > 0 ? ax : ax - w, y: sy > 0 ? ay : ay - h, w, h };
+}
+
+$('cropLayer').addEventListener('pointerdown', e => {
+  if (!cropEditing || e.button !== 0) return;
+  e.preventDefault();
+  const layer = $('cropLayer');
+  const rect = layer.getBoundingClientRect();
+  const at = ev => [clamp((ev.clientX - rect.left) / rect.width, 0, 1), clamp((ev.clientY - rect.top) / rect.height, 0, 1)];
+  const [px0, py0] = at(e);
+  const handle = e.target.dataset.h;
+  const start = crop && { ...crop };
+  const aspect = crop ? crop.aspect : 'free';
+  const r = cropRatio(aspect);
+  let onMove;
+
+  if (handle && start) {
+    const right = start.x + start.w, bottom = start.y + start.h;
+    if (handle.length === 2) {
+      // A corner: the opposite corner stays put.
+      const ax = handle.includes('w') ? right : start.x;
+      const ay = handle.includes('n') ? bottom : start.y;
+      onMove = (px, py) => boxFromCorner(ax, ay, px, py, r);
+    } else {
+      // An edge (free shape only): just that side moves.
+      onMove = (px, py) => {
+        const b = { ...start };
+        if (handle === 'n') { b.y = Math.min(py, bottom - MIN_CROP); b.h = bottom - b.y; }
+        if (handle === 's') { b.h = Math.max(py, b.y + MIN_CROP) - b.y; }
+        if (handle === 'w') { b.x = Math.min(px, right - MIN_CROP); b.w = right - b.x; }
+        if (handle === 'e') { b.w = Math.max(px, b.x + MIN_CROP) - b.x; }
+        return b;
+      };
+    }
+  } else if (start && e.target.closest('#cropBox')) {
+    onMove = (px, py) => ({
+      ...start,
+      x: clamp(start.x + px - px0, 0, 1 - start.w),
+      y: clamp(start.y + py - py0, 0, 1 - start.h),
+    });
+  } else {
+    // Outside the box: draw a new one from here.
+    onMove = (px, py) => boxFromCorner(px0, py0, px, py, r);
+  }
+
+  let moved = false;
+  layer.setPointerCapture(e.pointerId);
+  const move = ev => {
+    const [px, py] = at(ev);
+    if (!moved && Math.hypot((px - px0) * rect.width, (py - py0) * rect.height) < 3) return;
+    moved = true;
+    crop = { aspect, ...onMove(px, py) };
+    renderCrop();
+  };
+  const up = () => {
+    layer.removeEventListener('pointermove', move);
+    layer.removeEventListener('pointerup', up);
+    layer.removeEventListener('pointercancel', up);
+    if (moved) scheduleSave();
+  };
+  layer.addEventListener('pointermove', move);
+  layer.addEventListener('pointerup', up);
+  layer.addEventListener('pointercancel', up);
+});
 
 // --- Caption style ---
 const SWATCHES = ['#ffffff', '#ffe600', '#7dd3fc', '#86efac', '#f9a8d4'];
@@ -1472,7 +1665,8 @@ async function makeGif(overwrite = false) {
   const sid = sessionId;
   $('makeBtn').disabled = true;
   const r = await working(() => backend.exportGif(sid,
-    { captions: exportCaptions, name, ...getStyle(), ...getOutput(), overwrite }, progressTo($('makeProgress'))));
+    { captions: exportCaptions, name, ...getStyle(), ...getOutput(), overwrite,
+      crop: crop && { x: crop.x, y: crop.y, w: crop.w, h: crop.h } }, progressTo($('makeProgress'))));
   $('makeBtn').disabled = false;
   if (r.conflict) {
     showProgress($('makeProgress'), null);
